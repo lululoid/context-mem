@@ -1,7 +1,8 @@
 'use strict';
 
 // --- Dashboard HTML ---
-function getDashboardHtml() {
+function getDashboardHtml(projectDir) {
+  const fallbackProjectName = projectDir ? projectDir.split(/[\\/]/).pop() : 'Unknown';
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2882,7 +2883,7 @@ function updateProjectBar(instances) {
   var label = document.getElementById('projectLabel');
   if (!label) return;
   if (!instances || instances.length <= 1) {
-    var name = instances && instances[0] ? instances[0].projectName : '${path.basename(PROJECT_DIR).replace(/[<>&"]/g, '')}';
+    var name = instances && instances[0] ? instances[0].projectName : '${fallbackProjectName}';
     label.textContent = 'Project  ' + name;
   } else {
     label.textContent = 'Projects';
@@ -4315,7 +4316,8 @@ startPolling(3000);
 }
 
 // --- Graph Page HTML ---
-function getGraphPageHtml() {
+function getGraphPageHtml(projectDir) {
+  const fallbackProjectName = projectDir ? projectDir.split(/[\\/]/).pop() : 'Unknown';
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -4986,18 +4988,19 @@ function getGraphPageHtml() {
     }
   };
 
-  // --- Project switcher ---
-  function escHtml(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
+// --- Project switcher ---
+  function escHtml(s) { return s ? s.replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>') : ''; }
 
   function updateProjectBar(instances) {
     var label = document.getElementById('projectLabel');
     if (!label) return;
     if (!instances || instances.length <= 1) {
-      var name = instances && instances[0] ? instances[0].projectName : '${path.basename(PROJECT_DIR).replace(/[<>&"]/g, '')}';
+      var name = instances && instances[0] ? instances[0].projectName : '${fallbackProjectName}';
       label.textContent = 'Project  ' + name;
     } else {
       label.textContent = 'Projects';
     }
+  }
   }
 
   async function loadProjects() {
@@ -5070,7 +5073,8 @@ function getGraphPageHtml() {
 }
 
 // --- Timeline Page HTML ---
-function getTimelinePageHtml() {
+function getTimelinePageHtml(projectDir) {
+  const fallbackProjectName = projectDir ? projectDir.split(/[\\/]/).pop() : 'Unknown';
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5648,7 +5652,7 @@ function getTimelinePageHtml() {
     var label = document.getElementById('projectLabel');
     if (!label) return;
     if (!instances || instances.length <= 1) {
-      var name = instances && instances[0] ? instances[0].projectName : '${path.basename(PROJECT_DIR).replace(/[<>&"]/g, '')}';
+      var name = instances && instances[0] ? instances[0].projectName : '${fallbackProjectName}';
       label.textContent = 'Project  ' + name;
     } else {
       label.textContent = 'Projects';
@@ -5754,7 +5758,7 @@ function getTimelinePageHtml() {
 </html>`;
 }
 
-function getTopicsPageHtml() {
+function getTopicsPageHtml(projectDir) {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>context-mem - Topics</title>
 <style>
@@ -5833,7 +5837,7 @@ load();
 </script></body></html>`;
 }
 
-function getTrailPageHtml() {
+function getTrailPageHtml(projectDir) {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>context-mem - Decision Trail</title>
 <style>
@@ -5912,7 +5916,7 @@ async function searchTrail() {
 </script></body></html>`;
 }
 
-function getNarrativePageHtml() {
+function getNarrativePageHtml(projectDir) {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>context-mem - Narrative</title>
 <style>
@@ -5997,7 +6001,7 @@ generateNarrative();
 </script></body></html>`;
 }
 
-function getDiagnosticsPageHtml() {
+function getDiagnosticsPageHtml(projectDir) {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>context-mem - Diagnostics</title>
 <style>
@@ -6100,7 +6104,7 @@ loadDiagnostics();
 }
 
 
-function getCompressionAnalyticsHtml() {
+function getCompressionAnalyticsHtml(projectDir) {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>context-mem - Compression Analytics</title>
 <style>

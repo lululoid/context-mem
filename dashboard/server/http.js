@@ -91,22 +91,23 @@ function createHTTPServer(state) {
     // Page routing
     const pagePath = req.url.split('?')[0];
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    const projectDir = state.PROJECT_DIR;
     if (pagePath === '/graph') {
-      res.end(getGraphPageHtml());
+      res.end(getGraphPageHtml(projectDir));
     } else if (pagePath === '/timeline') {
-      res.end(getTimelinePageHtml());
+      res.end(getTimelinePageHtml(projectDir));
     } else if (pagePath === '/topics') {
-      res.end(getTopicsPageHtml());
+      res.end(getTopicsPageHtml(projectDir));
     } else if (pagePath === '/trail') {
-      res.end(getTrailPageHtml());
+      res.end(getTrailPageHtml(projectDir));
     } else if (pagePath === '/narrative') {
-      res.end(getNarrativePageHtml());
+      res.end(getNarrativePageHtml(projectDir));
     } else if (pagePath === '/diagnostics') {
-      res.end(getDiagnosticsPageHtml());
+      res.end(getDiagnosticsPageHtml(projectDir));
     } else if (pagePath === '/compression') {
-      res.end(getCompressionAnalyticsHtml());
+      res.end(getCompressionAnalyticsHtml(projectDir));
     } else {
-      res.end(getDashboardHtml());
+      res.end(getDashboardHtml(projectDir));
     }
   });
 
