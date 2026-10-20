@@ -12,7 +12,12 @@ export function loadConfig(projectDir: string): ContextMemConfig {
   try {
     const raw = fs.readFileSync(configPath, 'utf8');
     const parsed = JSON.parse(raw);
-    return mergeConfig(parsed);
+    const config = mergeConfig(parsed);
+    // Allow environment variable to override db_path
+    if (process.env.CONTEXT_MEM_DB_PATH) {
+      config.db_path = process.env.CONTEXT_MEM_DB_PATH;
+    }
+    return config;
   } catch {
     return structuredClone(DEFAULT_CONFIG);
   }
