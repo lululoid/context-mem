@@ -9,18 +9,19 @@ export function mergeConfig(partial: Record<string, unknown>): ContextMemConfig 
 
 export function loadConfig(projectDir: string): ContextMemConfig {
   const configPath = path.join(projectDir, '.context-mem.json');
+  let config: ContextMemConfig;
   try {
     const raw = fs.readFileSync(configPath, 'utf8');
     const parsed = JSON.parse(raw);
-    const config = mergeConfig(parsed);
-    // Allow environment variable to override db_path
-    if (process.env.CONTEXT_MEM_DB_PATH) {
-      config.db_path = process.env.CONTEXT_MEM_DB_PATH;
-    }
-    return config;
+    config = mergeConfig(parsed);
   } catch {
-    return structuredClone(DEFAULT_CONFIG);
+    config = structuredClone(DEFAULT_CONFIG);
   }
+  // Allow environment variable to override db_path (works even without .context-mem.json)
+  if (process.env.CONTEXT_MEM_DB_PATH) {
+    config.db_path = process.env.CONTEXT_MEM_DB_PATH;
+  }
+  return config;
 }
 
 function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
