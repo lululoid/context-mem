@@ -35,6 +35,7 @@ import {
   handleAsk,
   handleResolveContradiction,
   handleHandoffSession,
+  handleSwitchProject,
   handleMergeSuggestions,
   handleRecall,
   handleGenerateStory,
@@ -168,6 +169,9 @@ export function createMcpServer(kernel: ToolKernel): Server {
           break;
         case 'handoff_session':
           result = await handleHandoffSession(params as Parameters<typeof handleHandoffSession>[0], kernel);
+          break;
+        case 'switch_project':
+          result = await handleSwitchProject(params as Parameters<typeof handleSwitchProject>[0], kernel);
           break;
         case 'merge_suggestions':
           result = await handleMergeSuggestions(params as Parameters<typeof handleMergeSuggestions>[0], kernel);

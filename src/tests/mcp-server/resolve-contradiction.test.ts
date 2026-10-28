@@ -117,7 +117,7 @@ describe('handleResolveContradiction', () => {
     assert.equal(kept!.archived, false, 'kept entry should not be archived');
   });
 
-  it('merge creates new entry and archives both originals', async () => {
+  it('merge updates kept entry in-place and archives only the other', async () => {
     const first = await handleSaveKnowledge({
       category: 'pattern', title: 'Error handling', content: 'Use try-catch blocks', tags: ['errors'],
     }, kernel);
@@ -139,22 +139,22 @@ describe('handleResolveContradiction', () => {
     }, kernel);
 
     assert.ok('resolved' in result, 'should resolve successfully');
-    const resolved = result as { resolved: true; action: string; archived?: string[]; created?: string };
+    const resolved = result as { resolved: true; action: string; kept_entry_id: string; archived_entry_ids: string[]; created_entry_id?: string };
     assert.equal(resolved.action, 'merge');
-    assert.ok(resolved.archived?.includes(firstId), 'should archive first entry');
-    assert.ok(resolved.archived?.includes(secondId), 'should archive second entry');
-    assert.ok(resolved.created, 'should create a new merged entry');
+    assert.equal(resolved.kept_entry_id, secondId, 'kept entry should be entry_id by default');
+    assert.ok(resolved.archived_entry_ids.includes(firstId), 'should archive conflicting entry');
+    assert.ok(!resolved.archived_entry_ids.includes(secondId), 'should not archive kept entry');
+    assert.ok(!resolved.created_entry_id, 'merge should not create a new entry when keep is set');
 
-    // Verify both originals are archived
-    assert.equal(kernel.knowledgeBase.getById(firstId)!.archived, true);
-    assert.equal(kernel.knowledgeBase.getById(secondId)!.archived, true);
+    // Verify kept entry is not archived and has merged content
+    const kept = kernel.knowledgeBase.getById(secondId);
+    assert.ok(kept, 'kept entry should still exist');
+    assert.equal(kept!.archived, false, 'kept entry should not be archived');
+    assert.ok(kept!.content.includes('try-catch'), 'kept entry should have merged content');
+    assert.ok(kept!.content.includes('Result type'), 'kept entry should have merged content');
 
-    // Verify merged entry exists and is active
-    const merged = kernel.knowledgeBase.getById(resolved.created!);
-    assert.ok(merged, 'merged entry should exist');
-    assert.equal(merged!.archived, false);
-    assert.ok(merged!.content.includes('try-catch'), 'merged content should have content from both');
-    assert.ok(merged!.tags.includes('merged'), 'merged entry should have merged tag');
+    // Verify conflicting entry is archived
+    assert.equal(kernel.knowledgeBase.getById(firstId)!.archived, true, 'conflicting entry should be archived');
   });
 
   it('keep_both adds reviewed tags to both entries', async () => {
@@ -208,11 +208,109 @@ describe('handleResolveContradiction', () => {
     }, kernel);
 
     assert.ok('resolved' in result, 'should resolve successfully');
-    const resolved = result as { resolved: true; action: string; archived?: string[] };
+    const resolved = result as { resolved: true; action: string; archived_entry_ids: string[] };
     assert.equal(resolved.action, 'archive_old');
-    assert.ok(resolved.archived?.includes(firstId));
+    assert.ok(resolved.archived_entry_ids.includes(firstId));
 
     assert.equal(kernel.knowledgeBase.getById(firstId)!.archived, true);
     assert.equal(kernel.knowledgeBase.getById(secondId)!.archived, false);
+  });
+
+  it('supersede with keep: conflicting_id flips the keeper', async () => {
+    const first = await handleSaveKnowledge({
+      category: 'decision', title: 'Keeper-test auth v1', content: 'Keeper-test content one', tags: ['auth'], force: true,
+    }, kernel);
+    assert.ok('id' in first);
+    const second = await handleSaveKnowledge({
+      category: 'decision', title: 'Keeper-test auth v2', content: 'Keeper-test content two', tags: ['auth'], force: true,
+    }, kernel);
+    assert.ok('id' in second);
+
+    const firstId = (first as { id: string }).id;
+    const secondId = (second as { id: string }).id;
+
+    const result = await handleResolveContradiction({
+      entry_id: secondId, conflicting_id: firstId, action: 'supersede', keep: firstId,
+    }, kernel);
+
+    const resolved = result as { resolved: true; kept_entry_id: string; archived_entry_ids: string[] };
+    assert.equal(resolved.kept_entry_id, firstId, 'should keep conflicting_id as specified');
+    assert.ok(resolved.archived_entry_ids.includes(secondId), 'should archive entry_id');
+
+    assert.equal(kernel.knowledgeBase.getById(firstId)!.archived, false, 'kept entry should not be archived');
+    assert.equal(kernel.knowledgeBase.getById(secondId)!.archived, true, 'archived entry should be archived');
+  });
+
+  it('merge with keep: conflicting_id preserves conflicting entry', async () => {
+    const first = await handleSaveKnowledge({
+      category: 'pattern', title: 'Merge-keep pattern v1', content: 'Merge-keep old approach', tags: ['pattern'], force: true,
+    }, kernel);
+    assert.ok('id' in first);
+    const second = await handleSaveKnowledge({
+      category: 'pattern', title: 'Merge-keep pattern v2', content: 'Merge-keep new approach', tags: ['pattern'], force: true,
+    }, kernel);
+    assert.ok('id' in second);
+
+    const firstId = (first as { id: string }).id;
+    const secondId = (second as { id: string }).id;
+
+    const result = await handleResolveContradiction({
+      entry_id: secondId, conflicting_id: firstId, action: 'merge',
+      merged_content: 'Combined approach', keep: firstId,
+    }, kernel);
+
+    const resolved = result as { resolved: true; kept_entry_id: string; archived_entry_ids: string[] };
+    assert.equal(resolved.kept_entry_id, firstId, 'should keep conflicting_id as specified');
+    assert.ok(resolved.archived_entry_ids.includes(secondId), 'should archive entry_id');
+    assert.ok(!resolved.archived_entry_ids.includes(firstId), 'should not archive kept entry');
+
+    const kept = kernel.knowledgeBase.getById(firstId);
+    assert.ok(kept, 'kept entry should exist');
+    assert.equal(kept!.archived, false, 'kept entry should not be archived');
+    assert.ok(kept!.content.includes('Combined approach'), 'kept entry should have merged content');
+
+    assert.equal(kernel.knowledgeBase.getById(secondId)!.archived, true, 'archived entry should be archived');
+  });
+
+  it('rejects invalid keep value', async () => {
+    const first = await handleSaveKnowledge({
+      category: 'decision', title: 'Invalid-keep test v1', content: 'Invalid-keep content 1', tags: ['test'], force: true,
+    }, kernel);
+    const second = await handleSaveKnowledge({
+      category: 'decision', title: 'Invalid-keep test v2', content: 'Invalid-keep content 2', tags: ['test'], force: true,
+    }, kernel);
+
+    const firstId = (first as { id: string }).id;
+    const secondId = (second as { id: string }).id;
+
+    const result = await handleResolveContradiction({
+      entry_id: secondId, conflicting_id: firstId, action: 'supersede', keep: 'nonexistent-id',
+    }, kernel);
+
+    assert.ok('error' in result, 'should return error for invalid keep value');
+    assert.ok((result as { error: string }).error.includes('Invalid keep'));
+  });
+
+  it('return value includes kept_entry_id and archived_entry_ids', async () => {
+    const first = await handleSaveKnowledge({
+      category: 'api', title: 'Return-value API v1', content: 'Return-value content 1', tags: ['api'], force: true,
+    }, kernel);
+    const second = await handleSaveKnowledge({
+      category: 'api', title: 'Return-value API v2', content: 'Return-value content 2', tags: ['api'], force: true,
+    }, kernel);
+
+    const firstId = (first as { id: string }).id;
+    const secondId = (second as { id: string }).id;
+
+    const result = await handleResolveContradiction({
+      entry_id: secondId, conflicting_id: firstId, action: 'supersede',
+    }, kernel);
+
+    const resolved = result as { resolved: true; kept_entry_id: string; archived_entry_ids: string[]; kept_entry?: { id: string; title: string } };
+    assert.equal(resolved.kept_entry_id, secondId);
+    assert.deepEqual(resolved.archived_entry_ids, [firstId]);
+    assert.ok(resolved.kept_entry, 'should return kept_entry object');
+    assert.equal(resolved.kept_entry.id, secondId);
+    assert.equal(resolved.kept_entry.title, 'Return-value API v2');
   });
 });

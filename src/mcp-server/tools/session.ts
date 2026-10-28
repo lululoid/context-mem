@@ -3,6 +3,8 @@ import { ERROR_CATEGORIES } from '../../core/types.js';
 import { TimeTraveler } from '../../core/time-travel.js';
 import type { TimeSnapshot, TimeDelta } from '../../core/time-travel.js';
 import { type ToolKernel, type ToolDefinition, validateLimit, validateTimestamp } from './shared.js';
+import path from 'node:path';
+import fs from 'node:fs';
 
 // ---------------------------------------------------------------------------
 // Tool definitions
@@ -169,6 +171,18 @@ export const sessionToolDefinitions: ToolDefinition[] = [
           description: 'Where to send the continuation prompt. "return" (default) returns it in the response. "file" saves to .context-mem/handoff.md',
         },
       },
+    },
+},
+  // Project Switch tool
+  {
+    name: 'switch_project',
+    description: 'Switch the active project context. Validates the target project has a .context-mem database and returns project info. The client should reconnect to the MCP server with the new project path.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_path: { type: 'string', description: 'Absolute path to the target project directory' },
+      },
+      required: ['project_path'],
     },
   },
 ];
@@ -544,5 +558,42 @@ export async function handleHandoffSession(
     chain_id: chainEntry.chain_id,
     snapshot_id: kernel.sessionId,
     token_estimate: tokenEstimate,
+  };
+}
+
+export async function handleSwitchProject(
+  params: { project_path: string },
+  kernel: ToolKernel,
+): Promise<{ project_path: string; project_name: string; db_path: string; valid: boolean; message: string } | { error: string }> {
+  if (!params.project_path || typeof params.project_path !== 'string') {
+    return { error: 'project_path is required and must be a non-empty string' };
+  }
+
+  const targetPath = path.resolve(params.project_path);
+
+  if (!fs.existsSync(targetPath)) {
+    return { error: `Project path does not exist: ${targetPath}` };
+  }
+
+  // Check for .context-mem directory
+  const contextMemDir = path.join(targetPath, '.context-mem');
+  if (!fs.existsSync(contextMemDir)) {
+    return { error: `No .context-mem directory found in: ${targetPath}. Run 'context-mem init' first.` };
+  }
+
+  // Check for database
+  const dbPath = path.join(contextMemDir, 'store.db');
+  if (!fs.existsSync(dbPath)) {
+    return { error: `No store.db found in: ${contextMemDir}. Run 'context-mem init' first.` };
+  }
+
+  const projectName = path.basename(targetPath);
+
+  return {
+    project_path: targetPath,
+    project_name: projectName,
+    db_path: dbPath,
+    valid: true,
+    message: `Valid project found. Reconnect to MCP server with project: ${targetPath}`,
   };
 }

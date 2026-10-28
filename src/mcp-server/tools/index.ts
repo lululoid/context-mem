@@ -75,7 +75,7 @@ export const toolDefinitions: ToolDefinition[] = [
   // Contradiction Resolution
   ...byName(knowledgeDefs, 'resolve_contradiction'),
   // Session Handoff
-  ...byName(sessionDefs, 'handoff_session'),
+  ...byName(sessionDefs, 'handoff_session', 'switch_project'),
   // Total Recall — Verbatim Recall
   ...byName(searchDefs, 'recall'),
   // Total Recall — Generate Story

@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import type { KnowledgeCategory, SourceType, ContradictionWarning } from '../../core/types.js';
+import type { KnowledgeCategory, SourceType, ContradictionWarning, KnowledgeEntry } from '../../core/types.js';
 import { type ToolKernel, type ToolDefinition, validateLimit, validateObservationType } from './shared.js';
 
 // ---------------------------------------------------------------------------
@@ -69,7 +69,7 @@ export const knowledgeToolDefinitions: ToolDefinition[] = [
   // Contradiction Resolution
   {
     name: 'resolve_contradiction',
-    description: 'Resolve a contradiction between knowledge entries by merging, superseding, or keeping both.',
+    description: 'Resolve a contradiction between knowledge entries. The agent controls which entry is kept via the `keep` parameter (defaults to entry_id). The kept entry is preserved; the other entry is archived (supersede/archive_old) or merged into the kept entry (merge). Use keep_both to preserve both entries without archiving.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -77,6 +77,10 @@ export const knowledgeToolDefinitions: ToolDefinition[] = [
         conflicting_id: { type: 'string', description: 'ID of the conflicting entry' },
         action: { type: 'string', enum: ['supersede', 'merge', 'keep_both', 'archive_old'], description: 'Resolution action' },
         merged_content: { type: 'string', description: 'New merged content (required for merge action)' },
+        keep: { type: 'string', description: 'Which entry_id to keep. Must be entry_id or conflicting_id. Defaults to entry_id.' },
+        title: { type: 'string', description: 'New title for the kept entry (merge only)' },
+        content: { type: 'string', description: 'New content for the kept entry (merge only; merged_content takes precedence)' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'New tags for the kept entry (merge only)' },
       },
       required: ['entry_id', 'conflicting_id', 'action'],
     },
@@ -120,17 +124,36 @@ export async function handleSaveKnowledge(
   }
   const sourceType = rawSourceType as SourceType;
 
+  kernel.errorLogger?.warn('knowledge-base', 'save_knowledge started', {
+    category,
+    source_type: sourceType,
+    title_length: params.title.length,
+    content_length: params.content.length,
+    force: params.force === true,
+  });
+
   // Check for contradictions before saving
   let contradictions: ContradictionWarning[] = [];
   try {
     contradictions = await kernel.knowledgeBase.checkContradictions(params.title, params.content, category);
   } catch (err) {
+    kernel.errorLogger?.error('knowledge-base', err, {
+      category,
+      title: params.title,
+      operation: 'contradiction_check',
+    });
     return { error: `Contradiction check failed: ${(err as Error).message}` };
   }
 
   // Block save when contradictions exist unless force is strictly true
   const forceOverride = params.force === true;
   if (contradictions.length > 0 && !forceOverride) {
+    kernel.errorLogger?.warn('knowledge-base', 'save_knowledge blocked: contradictions found', {
+      category,
+      title: params.title,
+      contradiction_count: contradictions.length,
+      suggested_action: contradictions[0]?.suggested_action,
+    });
     return {
       blocked: true,
       contradictions,
@@ -152,19 +175,48 @@ export async function handleSaveKnowledge(
     const validFrom = params.valid_from ?? Date.now();
     try {
       kernel.storage.exec('UPDATE knowledge SET valid_from = ? WHERE id = ?', [validFrom, entry.id]);
-    } catch { /* non-critical */ }
+    } catch (err) {
+      kernel.errorLogger?.warn('knowledge-base', 'save_knowledge: valid_from update failed', {
+        entry_id: entry.id,
+        operation: 'valid_from_update',
+      });
+    }
 
     // If contradictions were force-overridden, supersede old entries
     if (forceOverride && contradictions.length > 0) {
+      const supersededIds: string[] = [];
       for (const c of contradictions) {
         try {
           kernel.storage.exec(
             'UPDATE knowledge SET valid_to = ?, superseded_by = ? WHERE id = ? AND valid_to IS NULL',
             [Date.now(), entry.id, c.id],
           );
-        } catch { /* non-critical */ }
+          supersededIds.push(c.id as string);
+        } catch (err) {
+          kernel.errorLogger?.warn('knowledge-base', 'save_knowledge: supersede update failed', {
+            entry_id: entry.id,
+            superseded_entry_id: c.id,
+            operation: 'supersede_update',
+          });
+        }
       }
+      kernel.errorLogger?.warn('knowledge-base', 'save_knowledge forced override: contradictions superseded', {
+        category,
+        title: params.title,
+        entry_id: entry.id,
+        superseded_entry_ids: supersededIds.join(','),
+        contradiction_count: contradictions.length,
+      });
     }
+
+    kernel.errorLogger?.log({ severity: 'info', category: 'knowledge-base', message: 'save_knowledge completed', context: {
+      category,
+      entry_id: entry.id,
+      title: entry.title,
+      source_type: entry.source_type,
+      forced: forceOverride && contradictions.length > 0,
+      contradiction_count: contradictions.length,
+    } });
 
     return {
       id: entry.id,
@@ -175,6 +227,11 @@ export async function handleSaveKnowledge(
       ...(forceOverride && contradictions.length > 0 ? { forced: true } : {}),
     };
   } catch (err) {
+    kernel.errorLogger?.error('knowledge-base', err, {
+      category,
+      title: params.title,
+      operation: 'entry_insert',
+    });
     return { error: `Failed to save knowledge entry: ${(err as Error).message}` };
   }
 }
@@ -277,9 +334,9 @@ export async function handleMergeSuggestions(
 }
 
 export async function handleResolveContradiction(
-  params: { entry_id: string; conflicting_id: string; action: string; merged_content?: string },
+  params: { entry_id: string; conflicting_id: string; action: string; merged_content?: string; keep?: string; title?: string; content?: string; tags?: string[] },
   kernel: ToolKernel,
-): Promise<{ resolved: true; action: string; archived?: string[]; created?: string; relationship_id?: string } | { error: string }> {
+): Promise<{ resolved: true; action: string; kept_entry_id: string; archived_entry_ids: string[]; created_entry_id?: string; relationship_id?: string; kept_entry?: KnowledgeEntry } | { error: string }> {
   // Validate required fields
   if (!params.entry_id || typeof params.entry_id !== 'string' || !params.entry_id.trim()) {
     return { error: 'entry_id is required and must be a non-empty string' };
@@ -295,6 +352,12 @@ export async function handleResolveContradiction(
     return { error: 'merged_content is required for merge action' };
   }
 
+  // Validate keep parameter: must be entry_id or conflicting_id if provided
+  const keepId = params.keep || params.entry_id;
+  if (keepId !== params.entry_id && keepId !== params.conflicting_id) {
+    return { error: `Invalid keep: "${keepId}". Must be entry_id or conflicting_id.` };
+  }
+
   const entry = kernel.knowledgeBase.getById(params.entry_id);
   if (!entry) {
     return { error: `Entry not found: ${params.entry_id}` };
@@ -304,72 +367,82 @@ export async function handleResolveContradiction(
     return { error: `Conflicting entry not found: ${params.conflicting_id}` };
   }
 
-  const result: { resolved: true; action: string; archived?: string[]; created?: string; relationship_id?: string } = {
-    resolved: true,
-    action: params.action,
-  };
+  // Determine which entry is kept and which is archived
+  const otherId = keepId === params.entry_id ? params.conflicting_id : params.entry_id;
+  const keptEntry = kernel.knowledgeBase.getById(keepId)!;
+  const otherEntry = kernel.knowledgeBase.getById(otherId)!;
+
+  const archivedIds: string[] = [];
 
   switch (params.action) {
     case 'supersede': {
-      // Archive the old entry (conflicting_id), keep the new one (entry_id)
-      kernel.knowledgeBase.archive(params.conflicting_id);
-      kernel.knowledgeBase.addTags(params.entry_id, ['supersedes:' + params.conflicting_id]);
-      result.archived = [params.conflicting_id];
-      // Add graph relationship if available
-      if (kernel.knowledgeGraph) {
-        try {
-          const fromEntity = kernel.knowledgeGraph.addEntity(entry.title, 'decision');
-          const toEntity = kernel.knowledgeGraph.addEntity(conflicting.title, 'decision');
-          const rel = kernel.knowledgeGraph.addRelationship(fromEntity.id, toEntity.id, 'supersedes');
-          result.relationship_id = rel.id;
-        } catch {
-          // Graph relationship is non-critical
-        }
-      }
+      kernel.knowledgeBase.archive(otherId);
+      archivedIds.push(otherId);
+      kernel.knowledgeBase.addTags(keepId, ['supersedes:' + otherId]);
       break;
     }
     case 'merge': {
-      // Create a new merged entry, archive both originals
-      const merged = await kernel.knowledgeBase.save({
-        category: entry.category,
-        title: entry.title,
-        content: params.merged_content!,
-        tags: Array.from(new Set([...entry.tags, ...conflicting.tags, 'merged'])),
-        shareable: entry.shareable,
-        source_type: entry.source_type,
-      });
-      kernel.knowledgeBase.archive(params.entry_id);
-      kernel.knowledgeBase.archive(params.conflicting_id);
-      result.archived = [params.entry_id, params.conflicting_id];
-      result.created = merged.id;
+      // Update the kept entry in-place with merged content; archive only the other entry
+      kernel.knowledgeBase.archive(otherId);
+      archivedIds.push(otherId);
+
+      const finalTitle = params.title ?? keptEntry.title;
+      const finalContent = params.merged_content ?? params.content ?? keptEntry.content;
+      const finalTags = params.tags ?? keptEntry.tags;
+
+      kernel.storage.exec(
+        'UPDATE knowledge SET title = ?, content = ?, tags = ? WHERE id = ?',
+        [finalTitle, finalContent, JSON.stringify(finalTags), keepId],
+      );
       break;
     }
     case 'keep_both': {
       // Add 'reviewed' tag to both, marking them as non-contradicting
       kernel.knowledgeBase.addTags(params.entry_id, ['reviewed', 'non-contradicting']);
       kernel.knowledgeBase.addTags(params.conflicting_id, ['reviewed', 'non-contradicting']);
-      // Add graph relationship if available
-      if (kernel.knowledgeGraph) {
-        try {
-          const fromEntity = kernel.knowledgeGraph.addEntity(entry.title, 'decision');
-          const toEntity = kernel.knowledgeGraph.addEntity(conflicting.title, 'decision');
-          const rel = kernel.knowledgeGraph.addRelationship(fromEntity.id, toEntity.id, 'contradicts', { weight: 0.3 });
-          result.relationship_id = rel.id;
-        } catch {
-          // Graph relationship is non-critical
-        }
-      }
       break;
     }
     case 'archive_old': {
-      // Archive the conflicting_id entry
-      kernel.knowledgeBase.archive(params.conflicting_id);
-      result.archived = [params.conflicting_id];
+      kernel.knowledgeBase.archive(otherId);
+      archivedIds.push(otherId);
       break;
     }
   }
 
-  return result;
+  // Add graph relationship if available
+  let relationshipId: string | undefined;
+  if (kernel.knowledgeGraph && params.action !== 'keep_both') {
+    try {
+      const fromEntity = kernel.knowledgeGraph.addEntity(keptEntry.title, 'decision');
+      const toEntity = kernel.knowledgeGraph.addEntity(otherEntry.title, 'decision');
+      const relType = 'supersedes';
+      const rel = kernel.knowledgeGraph.addRelationship(fromEntity.id, toEntity.id, relType);
+      relationshipId = rel.id;
+    } catch {
+      // Graph relationship is non-critical
+    }
+  } else if (kernel.knowledgeGraph && params.action === 'keep_both') {
+    try {
+      const fromEntity = kernel.knowledgeGraph.addEntity(entry.title, 'decision');
+      const toEntity = kernel.knowledgeGraph.addEntity(conflicting.title, 'decision');
+      const rel = kernel.knowledgeGraph.addRelationship(fromEntity.id, toEntity.id, 'contradicts', { weight: 0.3 });
+      relationshipId = rel.id;
+    } catch {
+      // Graph relationship is non-critical
+    }
+  }
+
+  const refreshedKept = kernel.knowledgeBase.getById(keepId);
+
+  return {
+    resolved: true,
+    action: params.action,
+    kept_entry_id: keepId,
+    archived_entry_ids: archivedIds,
+    ...(archivedIds.length > 0 ? { archived: archivedIds } : {}),
+    ...(relationshipId ? { relationship_id: relationshipId } : {}),
+    ...(refreshedKept ? { kept_entry: refreshedKept } : {}),
+  };
 }
 
 // Total Recall — Temporal Query handler
