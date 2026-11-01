@@ -3713,13 +3713,16 @@ function renderGraph() {
   const tooltip = document.getElementById('graphTooltip');
 
   if (graphNodes.length === 0) {
-    canvas.innerHTML = '';
-    canvas.appendChild(empty);
-    empty.style.display = 'flex';
-    statsEl.textContent = '';
+    if (canvas && empty) {
+      canvas.innerHTML = '';
+      canvas.appendChild(empty);
+      empty.style.display = 'flex';
+    }
+    if (statsEl) statsEl.textContent = '';
     return;
   }
-  empty.style.display = 'none';
+
+  if (empty) empty.style.display = 'none';
 
   const w = canvas.clientWidth || 600;
   const h = canvas.clientHeight || 400;
@@ -5000,7 +5003,6 @@ function getGraphPageHtml(projectDir) {
     } else {
       label.textContent = 'Projects';
     }
-  }
   }
 
   async function loadProjects() {
