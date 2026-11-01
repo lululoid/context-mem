@@ -2198,14 +2198,13 @@ function getDashboardHtml(projectDir) {
       <div class="section-title">
         <div class="icon" style="background:var(--purple-dim);color:var(--purple);">K</div>
         Knowledge Base
-        <button class="knowledge-toggle-btn" id="knowledgeArchiveToggle" title="Show archived entries">Archived</button>
         <span style="font-size:10px;color:var(--text-muted);margin-left:auto;font-family:var(--font-ui);" id="knowledgeCount">0 entries</span>
       </div>
       <div style="position:relative;margin-bottom:8px;">
         <input id="knowledgeSearchInput" type="text" placeholder="Search knowledge..." style="width:100%;padding:7px 28px 7px 10px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--text);font-family:var(--font-ui);font-size:11px;outline:none;" />
         <span id="knowledgeSearchClear" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text-muted);font-size:12px;display:none;">&times;</span>
       </div>
-      <div id="knowledgeCategories" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;"></div>
+      <div id="knowledgeCategories" style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-bottom:10px;"></div>
       <div id="knowledgeList" style="max-height:350px;overflow-y:auto;"></div>
     </div>
 
@@ -3289,12 +3288,20 @@ async function refresh() {
     document.getElementById('knowledgeCount').textContent = knowledgeStats.total + ' entries' + (knowledgeStats.archived > 0 ? ' (' + knowledgeStats.archived + ' archived)' : '');
     const kCatsEl = document.getElementById('knowledgeCategories');
     const catColors = { pattern: 'cat-pattern', decision: 'cat-decision', error: 'cat-error', api: 'cat-api', component: 'cat-component' };
-    kCatsEl.innerHTML = knowledgeStats.categories.map(c =>
+    const archiveBtnHtml = '<button class="knowledge-toggle-btn" id="knowledgeArchiveToggle" title="Show archived entries">' +
+      (showArchivedKnowledge ? 'Active' : 'Archived') +
+      '</button>';
+    const catHtml = knowledgeStats.categories.map(c =>
       '<div class="knowledge-category ' + (catColors[c.category] || '') + '">' +
         c.category +
         '<span class="cat-count">' + c.count + '</span>' +
       '</div>'
-    ).join('');
+    );
+    // Place the Archived toggle immediately after the component category pill
+    const compIdx = knowledgeStats.categories.findIndex(c => c.category === 'component');
+    if (compIdx !== -1) { catHtml.splice(compIdx + 1, 0, archiveBtnHtml); }
+    else { catHtml.push(archiveBtnHtml); }
+    kCatsEl.innerHTML = catHtml.join('');
 
     // Only update the knowledge list if no active search query
     if (!knowledgeSearchQuery) {
@@ -3725,9 +3732,12 @@ knowledgeSearchClear.addEventListener('click', () => {
   knowledgeSearchInput.focus();
 });
 
-const knowledgeArchiveToggle = document.getElementById('knowledgeArchiveToggle');
-if (knowledgeArchiveToggle) {
-  knowledgeArchiveToggle.addEventListener('click', toggleArchivedKnowledgeView);
+const kCatsEl = document.getElementById('knowledgeCategories');
+if (kCatsEl) {
+  kCatsEl.addEventListener('click', function (e) {
+    const btn = e.target.closest('#knowledgeArchiveToggle');
+    if (btn) toggleArchivedKnowledgeView();
+  });
 }
 
 // --- Toast notifications ---
