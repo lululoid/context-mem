@@ -448,6 +448,14 @@ export class KnowledgeBase {
     return true;
   }
 
+  /** Unarchive (restore) a knowledge entry by setting archived = 0. */
+  unarchive(id: string): boolean {
+    const row = this.storage.prepare('SELECT id FROM knowledge WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    if (!row) return false;
+    this.storage.exec('UPDATE knowledge SET archived = 0 WHERE id = ?', [id]);
+    return true;
+  }
+
   /** Update tags on a knowledge entry (merges with existing). */
   addTags(id: string, tags: string[]): boolean {
     const entry = this.getById(id);

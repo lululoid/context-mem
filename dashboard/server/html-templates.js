@@ -894,6 +894,39 @@ function getDashboardHtml(projectDir) {
   .source-chip.observation { background: var(--blue-dim); color: var(--blue); }
   .source-chip.content { background: var(--cyan-dim); color: var(--cyan); }
 
+  .knowledge-item.archived { opacity: 0.5; filter: grayscale(0.6); border-color: var(--border-subtle); background: var(--bg); }
+
+  .knowledge-archive-btn {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text-dim);
+    cursor: pointer;
+    font-family: var(--font-ui);
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .knowledge-archive-btn:hover { border-color: var(--red); color: var(--red); }
+  .knowledge-archive-btn.restore { border-color: var(--green); color: var(--green); }
+  .knowledge-archive-btn.restore:hover { border-color: var(--green); color: var(--green); }
+
+  .knowledge-toggle-btn {
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text-dim);
+    cursor: pointer;
+    font-family: var(--font-ui);
+    transition: all 0.15s;
+    margin-left: auto;
+    white-space: nowrap;
+  }
+  .knowledge-toggle-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(129,140,248,0.1); }
+
   /* --- Contradictions --- */
   .contradiction-item {
     padding: 10px 12px;
@@ -2165,6 +2198,7 @@ function getDashboardHtml(projectDir) {
       <div class="section-title">
         <div class="icon" style="background:var(--purple-dim);color:var(--purple);">K</div>
         Knowledge Base
+        <button class="knowledge-toggle-btn" id="knowledgeArchiveToggle" title="Show archived entries">Archived</button>
         <span style="font-size:10px;color:var(--text-muted);margin-left:auto;font-family:var(--font-ui);" id="knowledgeCount">0 entries</span>
       </div>
       <div style="position:relative;margin-bottom:8px;">
@@ -2703,7 +2737,10 @@ function renderKnowledgeAuthority(entries) {
         contentText = contentText.replace(re, '<span class="highlight">$1</span>');
       }
     }
-    return '<div class="knowledge-item">' +
+    const isArchived = !!(k.archived);
+    const btnLabel = isArchived ? 'Restore' : 'Archive';
+    const btnClass = 'knowledge-archive-btn' + (isArchived ? ' restore' : '');
+    return '<div class="knowledge-item' + (isArchived ? ' archived' : '') + '">' +
       '<div class="knowledge-item-header">' +
         '<span class="knowledge-item-cat ' + catClass + '" style="background:' + catBg + ';">' + escHtml(k.category || 'general') + '</span>' +
         '<span class="knowledge-item-title">' + escHtml(k.title || '') + '</span>' +
@@ -2714,6 +2751,7 @@ function renderKnowledgeAuthority(entries) {
         '<span class="knowledge-meta-text">auth ' + authPct + '%</span>' +
         '<span class="source-chip ' + escHtml(sourceType) + '">' + escHtml(sourceType) + '</span>' +
         '<span class="knowledge-meta-text">' + (k.access_count || 0) + 'x</span>' +
+        '<button class="' + btnClass + '" data-id="' + escHtml(k.id) + '" data-archived="' + isArchived + '" onclick="toggleKnowledgeArchive(this)">' + btnLabel + '</button>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -3570,6 +3608,7 @@ const knowledgeSearchInput = document.getElementById('knowledgeSearchInput');
 const knowledgeSearchClear = document.getElementById('knowledgeSearchClear');
 let knowledgeSearchQuery = '';
 let knowledgeSearchTimer = null;
+let showArchivedKnowledge = false;
 
 function renderKnowledgeList(items) {
   const catColors = { pattern: 'cat-pattern', decision: 'cat-decision', error: 'cat-error', api: 'cat-api', component: 'cat-component' };
@@ -3588,9 +3627,9 @@ function renderKnowledgeList(items) {
           contentText = contentText.replace(re, '<span class="highlight">$1</span>');
         }
       }
-      return '<div class="knowledge-item">' +
+      return '<div class="knowledge-item' + (!!(k.archived) ? ' archived' : '') + '">' +
         '<div class="knowledge-item-header">' +
-          '<span class="knowledge-item-cat ' + catClass + '" style="background:' + catBg + ';">' + k.category + '</span>' +
+          '<span class="knowledge-item-cat ' + catClass + '" style="background:' + catBg + ';">' + escHtml(k.category || 'general') + '</span>' +
           '<span class="knowledge-item-title">' + escHtml(k.title) + '</span>' +
         '</div>' +
         '<div class="knowledge-item-content">' + contentText + '</div>' +
@@ -3598,10 +3637,50 @@ function renderKnowledgeList(items) {
           '<span>score: ' + (k.relevance_score || 0).toFixed(2) + '</span>' +
           '<span>accessed: ' + (k.access_count || 0) + 'x</span>' +
           (k.tags ? '<span>tags: ' + escHtml(k.tags) + '</span>' : '') +
+          '<button class="knowledge-archive-btn' + (!!(k.archived) ? ' restore' : '') + '" data-id="' + escHtml(k.id) + '" data-archived="' + !!(k.archived) + '" onclick="toggleKnowledgeArchive(this)">' + (!!(k.archived) ? 'Restore' : 'Archive') + '</button>' +
         '</div>' +
       '</div>';
     }).join('');
   }
+}
+
+async function loadKnowledgeList() {
+  const url = showArchivedKnowledge ? '/api/knowledge?archived=1&limit=50' : '/api/knowledge?limit=20';
+  try {
+    const items = await fetchJson(url);
+    renderKnowledgeList(items);
+  } catch {}
+}
+
+async function toggleKnowledgeArchive(btn) {
+  const id = btn.dataset.id;
+  const currentlyArchived = btn.dataset.archived === 'true';
+  const newArchived = !currentlyArchived;
+  try {
+    const res = await fetch(API + '/api/knowledge/archive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: id, archived: newArchived })
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      showToast('Failed to ' + (newArchived ? 'archive' : 'restore') + ': ' + (data.error || 'unknown'));
+      return;
+    }
+    loadKnowledgeList();
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  }
+}
+
+function toggleArchivedKnowledgeView() {
+  showArchivedKnowledge = !showArchivedKnowledge;
+  const btn = document.getElementById('knowledgeArchiveToggle');
+  if (btn) {
+    btn.classList.toggle('active', showArchivedKnowledge);
+    btn.textContent = showArchivedKnowledge ? 'Active' : 'Archived';
+  }
+  loadKnowledgeList();
 }
 
 async function doKnowledgeSearch() {
@@ -3645,6 +3724,11 @@ knowledgeSearchClear.addEventListener('click', () => {
   doKnowledgeSearch();
   knowledgeSearchInput.focus();
 });
+
+const knowledgeArchiveToggle = document.getElementById('knowledgeArchiveToggle');
+if (knowledgeArchiveToggle) {
+  knowledgeArchiveToggle.addEventListener('click', toggleArchivedKnowledgeView);
+}
 
 // --- Toast notifications ---
 function showToast(msg) {

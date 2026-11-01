@@ -69,12 +69,35 @@ function handleApi(req, res, state) {
         data = q.getKnowledgeEntries(
           state,
           Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 1000),
-          url.searchParams.get('category') || null
+          url.searchParams.get('category') || null,
+          url.searchParams.get('archived') === '1'
         );
         break;
       case '/api/knowledge-stats':
         data = q.getKnowledgeStats(state);
         break;
+      case '/api/knowledge/archive': {
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': 'http://127.0.0.1:' + PORT });
+          res.end(JSON.stringify({ error: 'POST required' }));
+          return;
+        }
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', () => {
+          try {
+            const parsed = JSON.parse(body || '{}');
+            const result = q.toggleKnowledgeArchive(state, parsed.id, parsed.archived);
+            const status = result.ok ? 200 : 400;
+            res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': 'http://127.0.0.1:' + PORT });
+            res.end(JSON.stringify(result));
+          } catch (err) {
+            res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': 'http://127.0.0.1:' + PORT });
+            res.end(JSON.stringify({ error: err.message }));
+          }
+        });
+        return;
+      }
       case '/api/budget':
         data = q.getBudgetStatus(state);
         break;

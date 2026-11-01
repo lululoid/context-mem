@@ -263,12 +263,13 @@ function getTokenHistory(state) {
 
 // --- New feature queries ---
 
-function getKnowledgeEntries(state, limit = 20, category = null) {
+function getKnowledgeEntries(state, limit = 20, category = null, includeArchived = false) {
   const { db } = state;
   try {
-    let sql = 'SELECT id, category, title, content, tags, relevance_score, access_count, created_at, archived FROM knowledge WHERE archived = 0';
+    let sql = 'SELECT id, category, title, content, tags, relevance_score, access_count, created_at, archived FROM knowledge';
     const params = [];
-    if (category) { sql += ' AND category = ?'; params.push(category); }
+    if (!includeArchived) { sql += ' WHERE archived = 0'; }
+    if (category) { sql += (!includeArchived ? ' AND category = ?' : ' WHERE category = ?'); params.push(category); }
     sql += ' ORDER BY created_at DESC LIMIT ?';
     params.push(limit);
     return db.prepare(sql).all(...params);
@@ -316,6 +317,16 @@ function getKnowledgeStats(state) {
     const archived = db.prepare('SELECT COUNT(*) as v FROM knowledge WHERE archived = 1').get();
     return { categories: byCategory, total: total?.v || 0, archived: archived?.v || 0 };
   } catch { return { categories: [], total: 0, archived: 0 }; }
+}
+
+function toggleKnowledgeArchive(state, id, archived) {
+  const { writeDb } = state;
+  try {
+    const row = writeDb.prepare('SELECT id FROM knowledge WHERE id = ?').get(id);
+    if (!row) return { ok: false, error: 'knowledge entry not found' };
+    writeDb.prepare('UPDATE knowledge SET archived = ? WHERE id = ?').run(archived ? 1 : 0, id);
+    return { ok: true, id, archived: !!archived };
+  } catch (err) { return { ok: false, error: err.message }; }
 }
 
 function getBudgetStatus(state) {
@@ -1148,6 +1159,7 @@ module.exports = {
   getKnowledgeEntries,
   searchKnowledge,
   getKnowledgeStats,
+  toggleKnowledgeArchive,
   getBudgetStatus,
   getEvents,
   getEventStats,

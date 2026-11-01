@@ -102,16 +102,26 @@ async function main() {
   let db = new Database(dbPath, { readonly: true });
   db.pragma('journal_mode = WAL');
 
+  // Separate read-write connection for write operations (e.g. archive/unarchive).
+  // The main `db` stays readonly for all queries; writes go through `writeDb`.
+  let writeDb = new Database(dbPath);
+  writeDb.pragma('journal_mode = WAL');
+
   console.error(`context-mem dashboard: Reading from ${dbPath}`);
 
   /** Switch active DB to a different project */
   function switchProject(newDbPath) {
     try {
       const newDb = new Database(newDbPath, { readonly: true });
+      const newWriteDb = new Database(newDbPath);
       newDb.pragma('journal_mode = WAL');
+      newWriteDb.pragma('journal_mode = WAL');
       db.close();
+      writeDb.close();
       db = newDb;
+      writeDb = newWriteDb;
       state.db = db;
+      state.writeDb = writeDb;
       return true;
     } catch {
       return false;
@@ -122,6 +132,7 @@ async function main() {
   // read the live db/currentProject references.
   const state = {
     db,
+    writeDb,
     dbPath,
     currentProject: PROJECT_DIR,
     PROJECT_DIR,
@@ -215,6 +226,7 @@ async function main() {
     for (const res of sseClients) { try { res.end(); } catch {} }
     sseClients.clear();
     db.close();
+    writeDb.close();
     process.exit(0);
   }
   process.on('SIGTERM', shutdown);
