@@ -3,6 +3,20 @@ import type { KnowledgeCategory, SourceType, ContradictionWarning, KnowledgeEntr
 import { type ToolKernel, type ToolDefinition, validateLimit, validateObservationType } from './shared.js';
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function withTimeout<T>(promise: Promise<T>, ms: number, operation: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${operation} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Tool definitions
 // ---------------------------------------------------------------------------
 
@@ -132,10 +146,14 @@ export async function handleSaveKnowledge(
     force: params.force === true,
   });
 
-  // Check for contradictions before saving
+  // Check for contradictions before saving (with timeout)
   let contradictions: ContradictionWarning[] = [];
   try {
-    contradictions = await kernel.knowledgeBase.checkContradictions(params.title, params.content, category);
+    contradictions = await withTimeout(
+      kernel.knowledgeBase.checkContradictions(params.title, params.content, category),
+      15000,
+      'checkContradictions',
+    );
   } catch (err) {
     kernel.errorLogger?.error('knowledge-base', err, {
       category,

@@ -58,7 +58,12 @@ export class Embedder {
       const prefixedText = text.startsWith('search_query:') || text.startsWith('search_document:')
         ? text
         : `search_document: ${text}`;
-      const output = await _pipeline(prefixedText, { pooling: 'mean', normalize: true });
+      const output = await Promise.race([
+        _pipeline(prefixedText, { pooling: 'mean', normalize: true }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Embedder embed timed out after 15000ms')), 15000),
+        ),
+      ]);
       return new Float32Array(output.data);
     } catch {
       return null;
@@ -74,7 +79,12 @@ export class Embedder {
         await Embedder.embed(text);
         if (!_pipeline) return null;
       }
-      const output = await _pipeline(`search_query: ${text}`, { pooling: 'mean', normalize: true });
+      const output = await Promise.race([
+        _pipeline(`search_query: ${text}`, { pooling: 'mean', normalize: true }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Embedder embedQuery timed out after 15000ms')), 15000),
+        ),
+      ]);
       return new Float32Array(output.data);
     } catch {
       return null;
