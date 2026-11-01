@@ -1903,14 +1903,7 @@ function getDashboardHtml(projectDir) {
     <div class="logo">cm</div>
     <span class="header-title">context-mem <span style="font-size:10px;color:var(--text-muted);font-weight:400;">v3.0</span></span>
     <nav class="nav-links">
-      <a href="/" class="nav-link active">Home</a>
-      <a href="/topics" class="nav-link">Topics</a>
-      <a href="/graph" class="nav-link">Graph</a>
-      <a href="/timeline" class="nav-link">Timeline</a>
-      <a href="/trail" class="nav-link">Trail</a>
-      <a href="/narrative" class="nav-link">Narrative</a>
-      <a href="/diagnostics" class="nav-link">Diagnostics</a>
-      <a href="/compression" class="nav-link">Compression</a>
+      ${renderNav('/')}
     </nav>
   </div>
   <div class="header-right">
@@ -4010,7 +4003,9 @@ function copyToClipboard(text, btn) {
 const shortcutsOverlay = document.getElementById('shortcutsOverlay');
 
 document.addEventListener('keydown', (e) => {
-  const inSearch = document.activeElement === searchInput;
+  const inSearch = document.activeElement === searchInput
+    || document.activeElement === knowledgeSearchInput
+    || document.activeElement === smartSearchInput;
 
   if (e.key === '/' && !inSearch) {
     e.preventDefault();
@@ -4318,6 +4313,24 @@ startPolling(3000);
 </html>`;
 }
 
+// --- Shared Navigation ---
+function renderNav(activePath) {
+  const tabs = [
+    { path: '/', label: 'Home' },
+    { path: '/topics', label: 'Topics' },
+    { path: '/graph', label: 'Graph' },
+    { path: '/timeline', label: 'Timeline' },
+    { path: '/trail', label: 'Trail' },
+    { path: '/narrative', label: 'Narrative' },
+    { path: '/diagnostics', label: 'Diagnostics' },
+    { path: '/compression', label: 'Compression' },
+  ];
+  return tabs.map(t => {
+    const active = t.path === activePath ? ' active' : '';
+    return '<a href="' + t.path + '" class="nav-link' + active + '">' + t.label + '</a>';
+  }).join('');
+}
+
 // --- Graph Page HTML ---
 function getGraphPageHtml(projectDir) {
   const fallbackProjectName = projectDir ? projectDir.split(/[\\/]/).pop() : 'Unknown';
@@ -4513,11 +4526,7 @@ function getGraphPageHtml(projectDir) {
     <div class="logo">cm</div>
     <h1>ContextMem</h1>
     <nav class="nav-links">
-      <a href="/" class="nav-link">Home</a>
-      <a href="/graph" class="nav-link active">Graph</a>
-      <a href="/timeline" class="nav-link">Timeline</a>
-      <a href="/diagnostics" class="nav-link">Diagnostics</a>
-      <a href="/compression" class="nav-link">Compression</a>
+      ${renderNav('/graph')}
     </nav>
   </div>
   <button class="theme-toggle" id="themeToggle" title="Toggle light/dark theme">L</button>
@@ -5328,11 +5337,7 @@ function getTimelinePageHtml(projectDir) {
     <div class="logo">cm</div>
     <h1>ContextMem</h1>
     <nav class="nav-links">
-      <a href="/" class="nav-link">Home</a>
-      <a href="/graph" class="nav-link">Graph</a>
-      <a href="/timeline" class="nav-link active">Timeline</a>
-      <a href="/diagnostics" class="nav-link">Diagnostics</a>
-      <a href="/compression" class="nav-link">Compression</a>
+      ${renderNav('/timeline')}
     </nav>
   </div>
   <div class="header-right">
@@ -5791,7 +5796,7 @@ function getTopicsPageHtml(projectDir) {
 <div class="header"><div class="header-left">
   <div class="logo">cm</div><span style="font-size:14px;font-weight:600;">context-mem <span style="font-size:10px;color:var(--text-muted);font-weight:400;">v3.0</span></span>
   <nav class="nav-links">
-    <a href="/" class="nav-link">Home</a><a href="/topics" class="nav-link active">Topics</a><a href="/graph" class="nav-link">Graph</a><a href="/timeline" class="nav-link">Timeline</a><a href="/trail" class="nav-link">Trail</a><a href="/narrative" class="nav-link">Narrative</a><a href="/diagnostics" class="nav-link">Diagnostics</a><a href="/compression" class="nav-link">Compression</a>
+    ${renderNav('/topics')}
   </nav>
 </div></div>
 <div class="main">
@@ -5876,7 +5881,7 @@ function getTrailPageHtml(projectDir) {
 <div class="header"><div class="header-left">
   <div class="logo">cm</div><span style="font-size:14px;font-weight:600;">context-mem <span style="font-size:10px;color:var(--text-muted);font-weight:400;">v3.0</span></span>
   <nav class="nav-links">
-    <a href="/" class="nav-link">Home</a><a href="/topics" class="nav-link">Topics</a><a href="/graph" class="nav-link">Graph</a><a href="/timeline" class="nav-link">Timeline</a><a href="/trail" class="nav-link active">Trail</a><a href="/narrative" class="nav-link">Narrative</a><a href="/diagnostics" class="nav-link">Diagnostics</a><a href="/compression" class="nav-link">Compression</a>
+    ${renderNav('/trail')}
   </nav>
 </div></div>
 <div class="main">
@@ -5950,7 +5955,7 @@ function getNarrativePageHtml(projectDir) {
 <div class="header"><div class="header-left">
   <div class="logo">cm</div><span style="font-size:14px;font-weight:600;">context-mem <span style="font-size:10px;color:var(--text-muted);font-weight:400;">v3.0</span></span>
   <nav class="nav-links">
-    <a href="/" class="nav-link">Home</a><a href="/topics" class="nav-link">Topics</a><a href="/graph" class="nav-link">Graph</a><a href="/timeline" class="nav-link">Timeline</a><a href="/trail" class="nav-link">Trail</a><a href="/narrative" class="nav-link active">Narrative</a><a href="/diagnostics" class="nav-link">Diagnostics</a><a href="/compression" class="nav-link">Compression</a>
+    ${renderNav('/narrative')}
   </nav>
 </div></div>
 <div class="main">
@@ -6037,7 +6042,7 @@ function getDiagnosticsPageHtml(projectDir) {
 <div class="header"><div class="header-left">
   <div class="logo">cm</div><span style="font-size:14px;font-weight:600;">context-mem <span style="font-size:10px;color:var(--text-muted);font-weight:400;">v3.0</span></span>
   <nav class="nav-links">
-    <a href="/" class="nav-link">Home</a><a href="/topics" class="nav-link">Topics</a><a href="/graph" class="nav-link">Graph</a><a href="/timeline" class="nav-link">Timeline</a><a href="/trail" class="nav-link">Trail</a><a href="/narrative" class="nav-link">Narrative</a><a href="/diagnostics" class="nav-link active">Diagnostics</a>
+    ${renderNav('/diagnostics')}
   </nav>
 </div></div>
 <div class="main">
@@ -6155,7 +6160,7 @@ function getCompressionAnalyticsHtml(projectDir) {
   <div class="logo">cm</div>
   <span style="font-size:14px;font-weight:600;">context-mem <span style="font-size:10px;color:var(--text-muted);font-weight:400;">v3.0</span></span>
   <nav class="nav-links">
-    <a href="/" class="nav-link">Home</a><a href="/topics" class="nav-link">Topics</a><a href="/graph" class="nav-link">Graph</a><a href="/timeline" class="nav-link">Timeline</a><a href="/trail" class="nav-link">Trail</a><a href="/narrative" class="nav-link">Narrative</a><a href="/diagnostics" class="nav-link">Diagnostics</a><a href="/compression" class="nav-link">Compression</a><a href="/compression" class="nav-link active">Compression</a>
+    ${renderNav('/compression')}
   </nav>
 </div></div>
 <div class="main">
