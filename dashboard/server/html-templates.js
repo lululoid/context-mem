@@ -6046,16 +6046,16 @@ function getDiagnosticsPageHtml(projectDir) {
       <label>Since
         <select id="diag-since">
           <option value="3600000">Last hour</option>
-          <option value="86400000" selected>Last 24 hours</option>
-          <option value="604800000">Last 7 days</option>
+          <option value="86400000">Last 24 hours</option>
+          <option value="604800000" selected>Last 7 days</option>
         </select>
       </label>
       <label>Severity
         <select id="diag-severity">
-          <option value="">Any</option>
+          <option value="" selected>Any</option>
           <option value="info">info</option>
           <option value="warn">warn</option>
-          <option value="error" selected>error</option>
+          <option value="error">error</option>
           <option value="critical">critical</option>
         </select>
       </label>
