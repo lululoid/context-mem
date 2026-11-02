@@ -431,8 +431,12 @@ export async function handleResolveContradiction(
   let relationshipId: string | undefined;
   if (kernel.knowledgeGraph && params.action !== 'keep_both') {
     try {
-      const fromEntity = kernel.knowledgeGraph.addEntity(keptEntry.title, 'decision');
-      const toEntity = kernel.knowledgeGraph.addEntity(otherEntry.title, 'decision');
+      const fromEntity = kernel.knowledgeGraph.addEntity(keptEntry.title, 'decision', {
+        knowledgeId: keepId,
+      });
+      const toEntity = kernel.knowledgeGraph.addEntity(otherEntry.title, 'decision', {
+        knowledgeId: otherId,
+      });
       const relType = 'supersedes';
       const rel = kernel.knowledgeGraph.addRelationship(fromEntity.id, toEntity.id, relType);
       relationshipId = rel.id;
@@ -441,8 +445,12 @@ export async function handleResolveContradiction(
     }
   } else if (kernel.knowledgeGraph && params.action === 'keep_both') {
     try {
-      const fromEntity = kernel.knowledgeGraph.addEntity(entry.title, 'decision');
-      const toEntity = kernel.knowledgeGraph.addEntity(conflicting.title, 'decision');
+      const fromEntity = kernel.knowledgeGraph.addEntity(entry.title, 'decision', {
+        knowledgeId: keepId,
+      });
+      const toEntity = kernel.knowledgeGraph.addEntity(conflicting.title, 'decision', {
+        knowledgeId: conflicting.id,
+      });
       const rel = kernel.knowledgeGraph.addRelationship(fromEntity.id, toEntity.id, 'contradicts', { weight: 0.3 });
       relationshipId = rel.id;
     } catch {

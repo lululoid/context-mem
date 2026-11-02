@@ -195,10 +195,13 @@ export class KnowledgeGraph {
       if (frontier.length === 0) break;
     }
 
-    // Remove the starting entity from the result set
-    visited.delete(entityId);
+    // Get entities for all visited nodes (filters out archived-linked via getEntitiesByIds).
+    // The starting entity stays in `visited` so its edges remain valid relationship endpoints;
+    // it is removed from the display list below but kept as a valid endpoint.
+    const allEntities = this.getEntitiesByIds([...visited]);
 
-    const entities = this.getEntitiesByIds([...visited]);
+    // Remove the starting entity from the displayed neighbor set
+    const entities = allEntities.filter((e) => e.id !== entityId);
 
     // Deduplicate relationships by id
     const uniqueRels = new Map<string, Relationship>();
@@ -206,7 +209,14 @@ export class KnowledgeGraph {
       uniqueRels.set(rel.id, rel);
     }
 
-    return { entities, relationships: [...uniqueRels.values()] };
+    // Drop edges that point to entities excluded by the archived filter.
+    // The starting entity remains a valid endpoint even though it's not displayed.
+    const validEntityIds = new Set(allEntities.map((e) => e.id));
+    const filteredRels = [...uniqueRels.values()].filter(
+      (rel) => validEntityIds.has(rel.from_entity) && validEntityIds.has(rel.to_entity)
+    );
+
+    return { entities, relationships: filteredRels };
   }
 
   subgraph(entityId: string, depth: number): GraphResult {
@@ -238,7 +248,13 @@ export class KnowledgeGraph {
       uniqueRels.set(rel.id, rel);
     }
 
-    return { entities, relationships: [...uniqueRels.values()] };
+    // Drop edges that point to entities excluded by the archived filter
+    const validEntityIds = new Set(entities.map((e) => e.id));
+    const filteredRels = [...uniqueRels.values()].filter(
+      (rel) => validEntityIds.has(rel.from_entity) && validEntityIds.has(rel.to_entity)
+    );
+
+    return { entities, relationships: filteredRels };
   }
 
   // ---------------------------------------------------------------------------
@@ -344,7 +360,17 @@ export class KnowledgeGraph {
     if (ids.length === 0) return [];
     const placeholders = ids.map(() => '?').join(',');
     const rows = this.storage.prepare(
-      `SELECT id, name, entity_type, metadata, knowledge_id, created_at, updated_at FROM entities WHERE id IN (${placeholders})`,
+      `SELECT e.id, e.name, e.entity_type, e.metadata, e.knowledge_id, e.created_at, e.updated_at
+       FROM entities e
+       LEFT JOIN knowledge k ON e.knowledge_id = k.id
+       WHERE e.id IN (${placeholders})
+         AND (k.id IS NULL OR k.archived = 0)
+         AND NOT EXISTS (
+           SELECT 1 FROM knowledge k2
+           WHERE k2.archived = 1
+             AND e.knowledge_id IS NULL
+             AND k2.title COLLATE NOCASE = e.name COLLATE NOCASE
+         )`,
     ).all(...ids) as Record<string, unknown>[];
     return rows.map(r => this.rowToEntity(r));
   }

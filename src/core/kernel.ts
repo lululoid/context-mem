@@ -141,6 +141,17 @@ export class Kernel {
     this.knowledgeGraph = new KnowledgeGraph(this.storage);
     this.knowledgeGraph.setErrorLogger(this.errorLogger);
 
+    // Link existing graph entities to their knowledge entries so archived entries
+    // are excluded from graph queries. Idempotent — safe to call on every startup.
+    try {
+      const linked = this.knowledgeGraph.extractEntitiesFromKnowledge();
+      if (linked > 0) {
+        console.error(`context-mem: linked ${linked} knowledge entries to graph entities`);
+      }
+    } catch {
+      // Non-critical — graph queries will still work, just won't exclude archived entries
+    }
+
     // 3b2. Feedback engine
     try {
       const { FeedbackEngine } = await import('./feedback-engine.js');

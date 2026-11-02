@@ -698,11 +698,13 @@ function getGraphData(state, entityFilter, depth) {
     const edges = [];
     const visited = new Set();
 
-    // Get seed entities (all or filtered by name)
-    let seedSql = 'SELECT id, name, entity_type, metadata, knowledge_id, created_at FROM entities';
+    // Get seed entities (all or filtered by name), excluding entities linked to archived knowledge entries.
+    // Entities without knowledge_id are standalone (e.g. persons) and are always shown,
+    // unless their name matches an archived entry's title (case-insensitive, covers unlinked entities).
+    let seedSql = 'SELECT e.id, e.name, e.entity_type, e.metadata, e.knowledge_id, e.created_at FROM entities e LEFT JOIN knowledge k ON e.knowledge_id = k.id WHERE (k.id IS NULL OR k.archived = 0) AND NOT EXISTS (SELECT 1 FROM knowledge k2 WHERE k2.archived = 1 AND e.knowledge_id IS NULL AND k2.title COLLATE NOCASE = e.name COLLATE NOCASE)';
     const seedParams = [];
     if (entityFilter) {
-      seedSql += ' WHERE name LIKE ?';
+      seedSql += ' AND e.name LIKE ?';
       seedParams.push('%' + entityFilter + '%');
     }
     seedSql += ' LIMIT 200';
@@ -752,10 +754,15 @@ function getGraphData(state, entityFilter, depth) {
           try { rMeta = JSON.parse(r.metadata); } catch {}
           edges.push({ id: r.id, source: r.from_entity, target: r.to_entity, type: r.relationship_type, weight: r.weight, metadata: rMeta });
 
-          const neighborId = r.from_entity === eid ? r.to_entity : r.from_entity;
-          if (!visited.has(neighborId)) {
-            visited.add(neighborId);
-            const neighbor = db.prepare('SELECT id, name, entity_type, metadata, knowledge_id, created_at FROM entities WHERE id = ?').get(neighborId);
+            const neighborId = r.from_entity === eid ? r.to_entity : r.from_entity;
+            if (!visited.has(neighborId)) {
+              visited.add(neighborId);
+              // Skip neighbors whose linked knowledge entry is archived.
+              // Entities without knowledge_id are standalone and always shown,
+              // unless their name matches an archived entry's title (case-insensitive).
+              const neighbor = db.prepare(
+                'SELECT e.id, e.name, e.entity_type, e.metadata, e.knowledge_id, e.created_at FROM entities e LEFT JOIN knowledge k ON e.knowledge_id = k.id WHERE e.id = ? AND (k.id IS NULL OR k.archived = 0) AND NOT EXISTS (SELECT 1 FROM knowledge k2 WHERE k2.archived = 1 AND e.knowledge_id IS NULL AND k2.title COLLATE NOCASE = e.name COLLATE NOCASE)'
+              ).get(neighborId);
             if (neighbor) {
               let nMeta = {};
               try { nMeta = JSON.parse(neighbor.metadata); } catch {}
@@ -775,7 +782,13 @@ function getGraphData(state, entityFilter, depth) {
       if (!edgeIds.has(e.id)) { edgeIds.add(e.id); uniqueEdges.push(e); }
     }
 
-    return { nodes, edges: uniqueEdges };
+    // Drop edges that point to nodes excluded by the archived filter
+    const nodeIds = new Set(nodes.map(n => n.id));
+    const finalEdges = uniqueEdges.filter(
+      (e) => nodeIds.has(e.source) && nodeIds.has(e.target)
+    );
+
+    return { nodes, edges: finalEdges };
   } catch { return { nodes: [], edges: [] }; }
 }
 

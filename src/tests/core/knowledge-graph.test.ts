@@ -275,6 +275,129 @@ describe('KnowledgeGraph', () => {
   });
 
   // -------------------------------------------------------------------------
+  // Archived entry exclusion
+  // -------------------------------------------------------------------------
+
+  function seedKnowledge(id: string, archived: number): void {
+    storage.exec(
+      `INSERT INTO knowledge (id, category, title, content, tags, shareable, relevance_score, access_count, created_at, last_accessed, archived, source_type)
+       VALUES (?, 'pattern', ?, 'content', '[]', 1, 1.0, 0, 1000, 1000, ?, 'explicit')`,
+      [id, `entry-${id}`, archived],
+    );
+  }
+
+  it('neighbors excludes entities linked to archived knowledge entries', () => {
+    const center = graph.addEntity('arch-center', 'pattern', { knowledgeId: 'k-active' });
+    const active = graph.addEntity('arch-active', 'pattern', { knowledgeId: 'k-active-2' });
+    const archived = graph.addEntity('arch-archived', 'pattern', { knowledgeId: 'k-archived' });
+
+    seedKnowledge('k-active', 0);
+    seedKnowledge('k-active-2', 0);
+    seedKnowledge('k-archived', 1);
+
+    graph.addRelationship(center.id, active.id, 'uses');
+    graph.addRelationship(center.id, archived.id, 'depends-on');
+
+    const result = graph.neighbors(center.id);
+    const names = result.entities.map(e => e.name).sort();
+    assert.deepEqual(names, ['arch-active']);
+    assert.equal(result.entities.length, 1);
+  });
+
+  it('subgraph excludes entities linked to archived knowledge entries', () => {
+    const root = graph.addEntity('sub-arch-root', 'pattern', { knowledgeId: 'k-root-active' });
+    const child = graph.addEntity('sub-arch-child', 'pattern', { knowledgeId: 'k-child-archived' });
+
+    seedKnowledge('k-root-active', 0);
+    seedKnowledge('k-child-archived', 1);
+
+    graph.addRelationship(root.id, child.id, 'uses');
+
+    const result = graph.subgraph(root.id, 1);
+    const names = result.entities.map(e => e.name).sort();
+    assert.deepEqual(names, ['sub-arch-root']);
+    assert.equal(result.entities.length, 1);
+  });
+
+  it('neighbors drops edges to entities linked to archived knowledge entries', () => {
+    const center = graph.addEntity('edge-center', 'pattern', { knowledgeId: 'k-edge-active' });
+    const active = graph.addEntity('edge-active', 'pattern', { knowledgeId: 'k-edge-active-2' });
+    const archived = graph.addEntity('edge-archived', 'pattern', { knowledgeId: 'k-edge-archived' });
+
+    seedKnowledge('k-edge-active', 0);
+    seedKnowledge('k-edge-active-2', 0);
+    seedKnowledge('k-edge-archived', 1);
+
+    graph.addRelationship(center.id, active.id, 'uses');
+    graph.addRelationship(center.id, archived.id, 'depends-on');
+
+    const result = graph.neighbors(center.id);
+    assert.equal(result.entities.length, 1);
+    assert.equal(result.entities[0].name, 'edge-active');
+    assert.equal(result.relationships.length, 1);
+    assert.equal(result.relationships[0].relationship_type, 'uses');
+  });
+
+  it('subgraph drops edges to entities linked to archived knowledge entries', () => {
+    const root = graph.addEntity('sub-edge-root', 'pattern', { knowledgeId: 'k-sub-edge-active' });
+    const child = graph.addEntity('sub-edge-child', 'pattern', { knowledgeId: 'k-sub-edge-archived' });
+
+    seedKnowledge('k-sub-edge-active', 0);
+    seedKnowledge('k-sub-edge-archived', 1);
+
+    graph.addRelationship(root.id, child.id, 'uses');
+
+    const result = graph.subgraph(root.id, 1);
+    assert.equal(result.entities.length, 1);
+    assert.equal(result.entities[0].name, 'sub-edge-root');
+    assert.equal(result.relationships.length, 0);
+  });
+
+  it('neighbors includes entities without knowledge_id (standalone entities)', () => {
+    const center = graph.addEntity('name-center-2', 'module');
+    const unlinked = graph.addEntity('Completely unrelated entity', 'file');
+
+    seedKnowledge('k-some-archived', 1);
+    storage.exec("UPDATE knowledge SET title = 'Some archived title' WHERE id = 'k-some-archived'");
+
+    graph.addRelationship(center.id, unlinked.id, 'uses');
+
+    const result = graph.neighbors(center.id);
+    assert.equal(result.entities.length, 1);
+    assert.equal(result.entities[0].name, 'Completely unrelated entity');
+    assert.equal(result.relationships.length, 1);
+  });
+
+  it('neighbors excludes entities without knowledge_id whose name matches an archived entry', () => {
+    const center = graph.addEntity('name-center', 'module');
+    const archivedName = graph.addEntity('Bug: archived entry', 'bug');
+
+    seedKnowledge('k-archived-name', 1);
+    storage.exec("UPDATE knowledge SET title = 'Bug: archived entry' WHERE id = 'k-archived-name'");
+
+    graph.addRelationship(center.id, archivedName.id, 'uses');
+
+    const result = graph.neighbors(center.id);
+    assert.equal(result.entities.length, 0);
+    assert.equal(result.relationships.length, 0);
+  });
+
+  it('neighbors excludes entities without knowledge_id whose name matches archived entry case-insensitively', () => {
+    const center = graph.addEntity('name-center-case', 'module');
+    // Entity name has different case than archived entry title
+    const archivedName = graph.addEntity('BUG: GRAPH NODES SHOW ..', 'bug');
+
+    seedKnowledge('k-archived-case', 1);
+    storage.exec("UPDATE knowledge SET title = 'Bug: graph nodes show ..' WHERE id = 'k-archived-case'");
+
+    graph.addRelationship(center.id, archivedName.id, 'uses');
+
+    const result = graph.neighbors(center.id);
+    assert.equal(result.entities.length, 0, 'entity with different-case name matching archived title should be excluded');
+    assert.equal(result.relationships.length, 0);
+  });
+
+  // -------------------------------------------------------------------------
   // extractEntitiesFromKnowledge()
   // -------------------------------------------------------------------------
 
