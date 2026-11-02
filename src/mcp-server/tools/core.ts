@@ -319,7 +319,7 @@ export async function handleGet(
   }
 
   const row = kernel.storage
-    .prepare('SELECT id, type, content, summary, metadata FROM observations WHERE id = ?')
+    .prepare('SELECT id, type, content, summary, metadata FROM observations WHERE id = ? AND archived = 0')
     .get(params.id) as { id: string; type: string; content: string; summary: string | null; metadata: string } | undefined;
 
   if (!row) {

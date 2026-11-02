@@ -251,4 +251,23 @@ describe('MCP tools — get', () => {
       assert.ok(typeof result.metadata === 'object', 'metadata should be an object');
     }
   });
+
+  it('excludes archived observations from @get', async () => {
+    storage.prepare('UPDATE observations SET archived = 1 WHERE id = ?').run(storedId);
+
+    const archivedResult = await handleGet({ id: storedId }, kernel);
+    assert.ok('error' in archivedResult, 'archived observation should not be retrievable via @get');
+    if ('error' in archivedResult) {
+      assert.equal(archivedResult.error, `Observation not found: ${storedId}`);
+    }
+
+    storage.prepare('UPDATE observations SET archived = 0 WHERE id = ?').run(storedId);
+
+    const restoredResult = await handleGet({ id: storedId }, kernel);
+    assert.ok(!('error' in restoredResult), 'restored observation should be retrievable via @get');
+    if (!('error' in restoredResult)) {
+      assert.equal(restoredResult.id, storedId);
+      assert.equal(restoredResult.type, 'context');
+    }
+  });
 });
