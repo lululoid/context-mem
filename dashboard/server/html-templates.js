@@ -927,6 +927,39 @@ function getDashboardHtml(projectDir) {
   }
   .knowledge-toggle-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(129,140,248,0.1); }
 
+  .obs-item.archived { opacity: 0.5; filter: grayscale(0.6); border-color: var(--border-subtle); background: var(--bg); }
+
+  .obs-archive-btn {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text-dim);
+    cursor: pointer;
+    font-family: var(--font-ui);
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .obs-archive-btn:hover { border-color: var(--red); color: var(--red); }
+  .obs-archive-btn.restore { border-color: var(--green); color: var(--green); }
+  .obs-archive-btn.restore:hover { border-color: var(--green); color: var(--green); }
+
+  .obs-toggle-btn {
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text-dim);
+    cursor: pointer;
+    font-family: var(--font-ui);
+    transition: all 0.15s;
+    margin-left: auto;
+    white-space: nowrap;
+  }
+  .obs-toggle-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(129,140,248,0.1); }
+
   /* --- Contradictions --- */
   .contradiction-item {
     padding: 10px 12px;
@@ -2413,6 +2446,7 @@ function getDashboardHtml(projectDir) {
       <div class="section-title" style="margin-bottom:0;flex-shrink:0;">
         <div class="icon" style="background:var(--cyan-dim);color:var(--cyan);">L</div>
         Observations
+        <button class="obs-toggle-btn" id="obsArchiveToggle" title="Show archived observations">Archived</button>
       </div>
       <div class="search-box">
         <input type="text" class="search-input" id="searchInput" placeholder="Search observations... (Enter to search)" autocomplete="off" spellcheck="false">
@@ -2470,8 +2504,8 @@ function getDashboardHtml(projectDir) {
 const API = '';
 let currentFilter = null;
 let currentSearch = '';
-let searchDebounceTimer = null;
 let openDetailId = null;
+let showArchivedObs = false;
 let currentSession = null;
 let lastObsCount = null;
 let currentTheme = localStorage.getItem('cm-theme') || 'dark';
@@ -3053,6 +3087,7 @@ async function refresh() {
       let tlUrl = '/api/timeline?limit=50';
       if (currentFilter) tlUrl += '&type=' + currentFilter;
       if (currentSession) tlUrl += '&session=' + currentSession;
+      if (showArchivedObs) tlUrl += '&archived=1';
       fetches.push(fetchJson(tlUrl));
     }
 
@@ -3435,6 +3470,7 @@ async function refresh() {
             '</div>' +
             '<div class="obs-summary">' + (display !== null ? escHtml(display) : displayHtml) + '</div>' +
             '<div class="obs-id">' + obs.id + '</div>' +
+            '<button class="obs-archive-btn' + (!!(obs.archived) ? ' restore' : '') + '" data-id="' + escHtml(obs.id) + '" data-archived="' + !!(obs.archived) + '" onclick="toggleObservationArchive(this)">' + (!!(obs.archived) ? 'Restore' : 'Archive') + '</button>' +
             '<div class="obs-detail" id="detail-' + obs.id + '"></div>' +
           '</div>' +
         '</div>';
@@ -3468,6 +3504,7 @@ async function refresh() {
 const detailCache = {};
 
 async function handleObsClick(e) {
+  if (e.target.closest('.obs-archive-btn')) return;
   const item = e.target.closest('.obs-item');
   if (!item) return;
 
@@ -3690,6 +3727,37 @@ function toggleArchivedKnowledgeView() {
   loadKnowledgeList();
 }
 
+async function toggleObservationArchive(btn) {
+  const id = btn.dataset.id;
+  const currentlyArchived = btn.dataset.archived === 'true';
+  const newArchived = !currentlyArchived;
+  try {
+    const res = await fetch(API + '/api/observation/archive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: id, archived: newArchived })
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      showToast('Failed to ' + (newArchived ? 'archive' : 'restore') + ': ' + (data.error || 'unknown'));
+      return;
+    }
+    refresh();
+  } catch (err) {
+    showToast('Error: ' + err.message);
+  }
+}
+
+function toggleArchivedObsView() {
+  showArchivedObs = !showArchivedObs;
+  const btn = document.getElementById('obsArchiveToggle');
+  if (btn) {
+    btn.classList.toggle('active', showArchivedObs);
+    btn.textContent = showArchivedObs ? 'Active' : 'Archived';
+  }
+  refresh();
+}
+
 async function doKnowledgeSearch() {
   const q = knowledgeSearchInput.value.trim();
   knowledgeSearchQuery = q;
@@ -3738,6 +3806,11 @@ if (kCatsEl) {
     const btn = e.target.closest('#knowledgeArchiveToggle');
     if (btn) toggleArchivedKnowledgeView();
   });
+}
+
+const obsArchiveToggle = document.getElementById('obsArchiveToggle');
+if (obsArchiveToggle) {
+  obsArchiveToggle.addEventListener('click', toggleArchivedObsView);
 }
 
 // --- Toast notifications ---

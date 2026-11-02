@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { BetterSqlite3Storage } from '../../../plugins/storage/better-sqlite3.js';
 
-describe('migration v18 — error_log table', () => {
+describe('migration to latest v19 — observations archived flag', () => {
   let dbPath: string;
   let storage: BetterSqlite3Storage;
 
@@ -40,9 +40,16 @@ describe('migration v18 — error_log table', () => {
     assert.ok(names.includes('idx_error_log_hash'));
   });
 
-  it('user_version is 18 after open', () => {
+  it('user_version is 19 after open', () => {
     const v = storage.prepare('PRAGMA user_version').get() as { user_version: number };
-    assert.equal(v.user_version, 18);
+    assert.equal(v.user_version, 19);
+  });
+
+  it('observations has archived column defaulting to 0', () => {
+    const row = storage.prepare(`INSERT INTO observations (id, type, content, summary, metadata, indexed_at)
+                                 VALUES ('obs-archived-test', 'note', 'hello', 'hi', '{}', 1000)
+                                 RETURNING archived`).get() as { archived: number };
+    assert.equal(row.archived, 0);
   });
 
   it('accepts an insert with all required columns', () => {

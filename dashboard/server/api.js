@@ -98,6 +98,28 @@ function handleApi(req, res, state) {
         });
         return;
       }
+      case '/api/observation/archive': {
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': 'http://127.0.0.1:' + PORT });
+          res.end(JSON.stringify({ error: 'POST required' }));
+          return;
+        }
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', () => {
+          try {
+            const parsed = JSON.parse(body || '{}');
+            const result = q.toggleObservationArchive(state, parsed.id, parsed.archived);
+            const status = result.ok ? 200 : 400;
+            res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': 'http://127.0.0.1:' + PORT });
+            res.end(JSON.stringify(result));
+          } catch (err) {
+            res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': 'http://127.0.0.1:' + PORT });
+            res.end(JSON.stringify({ error: err.message }));
+          }
+        });
+        return;
+      }
       case '/api/budget':
         data = q.getBudgetStatus(state);
         break;

@@ -380,7 +380,7 @@ async function searchObservations(
              bm25(obs_content_fts) as relevance
       FROM obs_content_fts
       JOIN observations o ON o.rowid = obs_content_fts.rowid
-      WHERE obs_content_fts MATCH ?
+      WHERE obs_content_fts MATCH ? AND o.archived = 0
     `;
     const sqlParams: unknown[] = [sanitizeFTS5Query(query)];
 

@@ -52,13 +52,14 @@ function getStats(state) {
   };
 }
 
-function getTimeline(state, limit = 50, type = null, sessionId = null) {
+function getTimeline(state, limit = 50, type = null, sessionId = null, includeArchived = false) {
   const { db } = state;
   let sql = `SELECT id, type, summary, substr(content, 1, 300) as content_preview,
-             indexed_at, privacy_level, session_id, metadata
+             indexed_at, privacy_level, session_id, metadata, archived
              FROM observations`;
   const conditions = [];
   const params = [];
+  if (!includeArchived) { conditions.push('archived = 0'); }
   if (type) { conditions.push('type = ?'); params.push(type); }
   if (sessionId) { conditions.push('session_id = ?'); params.push(sessionId); }
   if (conditions.length > 0) sql += ' WHERE ' + conditions.join(' AND ');
@@ -198,7 +199,7 @@ function getObservation(state, id) {
   };
 }
 
-function searchObservations(state, query, limit = 20, type = null) {
+function searchObservations(state, query, limit = 20, type = null, includeArchived = false) {
   const { db } = state;
   if (!query || !query.trim()) return [];
 
@@ -223,6 +224,7 @@ function searchObservations(state, query, limit = 20, type = null) {
            JOIN observations o ON o.rowid = f.rowid
            WHERE obs_fts MATCH ?`;
     params = [sanitized];
+    if (!includeArchived) { sql += ' AND o.archived = 0'; }
 
     if (type) {
       sql += ' AND o.type = ?';
@@ -241,6 +243,7 @@ function searchObservations(state, query, limit = 20, type = null) {
            WHERE (summary LIKE ? OR content LIKE ?)`;
     const like = `%${query.trim()}%`;
     params = [like, like];
+    if (!includeArchived) { sql += ' AND archived = 0'; }
 
     if (type) {
       sql += ' AND type = ?';
@@ -325,6 +328,16 @@ function toggleKnowledgeArchive(state, id, archived) {
     const row = writeDb.prepare('SELECT id FROM knowledge WHERE id = ?').get(id);
     if (!row) return { ok: false, error: 'knowledge entry not found' };
     writeDb.prepare('UPDATE knowledge SET archived = ? WHERE id = ?').run(archived ? 1 : 0, id);
+    return { ok: true, id, archived: !!archived };
+  } catch (err) { return { ok: false, error: err.message }; }
+}
+
+function toggleObservationArchive(state, id, archived) {
+  const { writeDb } = state;
+  try {
+    const row = writeDb.prepare('SELECT id FROM observations WHERE id = ?').get(id);
+    if (!row) return { ok: false, error: 'observation not found' };
+    writeDb.prepare('UPDATE observations SET archived = ? WHERE id = ?').run(archived ? 1 : 0, id);
     return { ok: true, id, archived: !!archived };
   } catch (err) { return { ok: false, error: err.message }; }
 }
@@ -608,7 +621,7 @@ function getLLMStatus(state) {
 /**
  * Enhanced search with intent classification and reranking
  */
-function searchWithPipeline(state, query, limit = 20, type = null) {
+function searchWithPipeline(state, query, limit = 20, type = null, includeArchived = false) {
   if (!query || !query.trim()) return { results: [], intent: { intent_type: 'general', confidence: 0 }, weights: {} };
 
   const intent = classifyIntent(query);
@@ -624,7 +637,7 @@ function searchWithPipeline(state, query, limit = 20, type = null) {
   const weights = INTENT_WEIGHTS[intent.intent_type] || INTENT_WEIGHTS.general;
 
   // Get raw search results
-  const rawResults = searchObservations(state, query, limit * 2, type);
+  const rawResults = searchObservations(state, query, limit * 2, type, includeArchived);
 
   // Apply reranking
   const now = Date.now();
@@ -746,14 +759,21 @@ function getGraphData(state, entityFilter, depth) {
   } catch { return { nodes: [], edges: [] }; }
 }
 
-function getTimelineRange(state, from, to, type, limit) {
+function getTimelineRange(state, from, to, type, limit, includeArchived = false) {
   const { db } = state;
   try {
     let sql = `SELECT id, type, summary, substr(content, 1, 300) as content_preview,
                indexed_at, privacy_level, session_id, metadata
-               FROM observations WHERE indexed_at >= ? AND indexed_at <= ?`;
-    const params = [from, to];
-    if (type) { sql += ' AND type = ?'; params.push(type); }
+               FROM observations`;
+    const conditions = [];
+    const params = [];
+    if (!includeArchived) { conditions.push('archived = 0'); }
+    conditions.push('indexed_at >= ?');
+    params.push(from);
+    conditions.push('indexed_at <= ?');
+    params.push(to);
+    if (type) { conditions.push('type = ?'); params.push(type); }
+    sql += ' WHERE ' + conditions.join(' AND ');
     sql += ' ORDER BY indexed_at DESC LIMIT ?';
     params.push(limit);
     return db.prepare(sql).all(...params);
@@ -1160,6 +1180,7 @@ module.exports = {
   searchKnowledge,
   getKnowledgeStats,
   toggleKnowledgeArchive,
+  toggleObservationArchive,
   getBudgetStatus,
   getEvents,
   getEventStats,

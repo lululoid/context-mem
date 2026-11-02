@@ -19,11 +19,11 @@ export class LevenshteinSearch implements SearchPlugin {
     if (queryWords.length === 0) return [];
 
     // Operate on 100 most recent observations only
-    let sql = 'SELECT id, type, summary, content, indexed_at, access_count FROM observations';
+    let sql = 'SELECT id, type, summary, content, indexed_at, access_count FROM observations WHERE archived = 0';
     const params: unknown[] = [];
 
     if (opts.type_filter && opts.type_filter.length > 0) {
-      sql += ` WHERE type IN (${opts.type_filter.map(() => '?').join(',')})`;
+      sql += ` AND type IN (${opts.type_filter.map(() => '?').join(',')})`;
       params.push(...opts.type_filter);
     }
 

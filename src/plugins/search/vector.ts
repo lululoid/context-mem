@@ -27,7 +27,7 @@ export class VectorSearch implements SearchPlugin {
     let sql = `
       SELECT id, type, summary, content, indexed_at, access_count, embeddings
       FROM observations
-      WHERE embeddings IS NOT NULL
+      WHERE embeddings IS NOT NULL AND archived = 0
     `;
     const params: unknown[] = [];
 

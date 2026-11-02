@@ -4,7 +4,7 @@ export interface Migration {
   up: string;
 }
 
-export const LATEST_SCHEMA_VERSION = 18;
+export const LATEST_SCHEMA_VERSION = 19;
 
 export const migrations: Migration[] = [
   {
@@ -582,6 +582,16 @@ export const migrations: Migration[] = [
 
       INSERT OR IGNORE INTO schema_version (version, applied_at, description)
       VALUES (18, unixepoch(), 'Add error_log table for structured internal error capture');
+    `,
+  },
+  {
+    version: 19,
+    description: 'Add archived flag to observations for reversible archive/unarchive',
+    up: `
+      ALTER TABLE observations ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+      CREATE INDEX IF NOT EXISTS idx_obs_archived ON observations(archived);
+      INSERT OR IGNORE INTO schema_version (version, applied_at, description)
+      VALUES (19, unixepoch(), 'Add archived flag to observations for reversible archive/unarchive');
     `,
   },
 ];

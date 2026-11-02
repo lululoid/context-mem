@@ -107,6 +107,17 @@ async function main() {
   let writeDb = new Database(dbPath);
   writeDb.pragma('journal_mode = WAL');
 
+  // Lazy schema migration: ensure `archived` column exists on observations.
+  try {
+    const cols = writeDb.prepare('PRAGMA table_info(observations)').all().map(c => c.name);
+    if (!cols.includes('archived')) {
+      writeDb.exec('ALTER TABLE observations ADD COLUMN archived INTEGER DEFAULT 0');
+      console.error(`context-mem dashboard: added archived column to observations`);
+    }
+  } catch (e) {
+    console.error(`context-mem dashboard: observations archived migration skipped: ${e.message}`);
+  }
+
   console.error(`context-mem dashboard: Reading from ${dbPath}`);
 
   /** Switch active DB to a different project */
@@ -116,6 +127,13 @@ async function main() {
       const newWriteDb = new Database(newDbPath);
       newDb.pragma('journal_mode = WAL');
       newWriteDb.pragma('journal_mode = WAL');
+      // Ensure archived column exists on observations for the new project DB
+      try {
+        const cols = newWriteDb.prepare('PRAGMA table_info(observations)').all().map(c => c.name);
+        if (!cols.includes('archived')) {
+          newWriteDb.exec('ALTER TABLE observations ADD COLUMN archived INTEGER DEFAULT 0');
+        }
+      } catch {}
       db.close();
       writeDb.close();
       db = newDb;

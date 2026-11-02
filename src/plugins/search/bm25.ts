@@ -22,7 +22,7 @@ export class BM25Search implements SearchPlugin {
     const seen = new Map<string, { row: RowData; score: number }>();
 
     // Build filter clauses
-    let filterSQL = '';
+    let filterSQL = ' AND o.archived = 0';
     const filterParams: unknown[] = [];
     if (opts.type_filter && opts.type_filter.length > 0) {
       filterSQL += ` AND o.type IN (${opts.type_filter.map(() => '?').join(',')})`;
