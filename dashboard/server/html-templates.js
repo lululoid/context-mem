@@ -797,7 +797,9 @@ function getDashboardHtml(projectDir) {
   .knowledge-category:hover { border-color: var(--accent); }
   .knowledge-category.active { border-color: var(--accent); background: var(--accent-glow); }
 
-  .knowledge-category .cat-count {
+  .knowledge-category .cat-count,
+  .knowledge-toggle-btn .cat-count,
+  .obs-toggle-btn .cat-count {
     font-size: 9px;
     color: var(--text-muted);
     background: var(--bg-card);
@@ -922,7 +924,6 @@ function getDashboardHtml(projectDir) {
     cursor: pointer;
     font-family: var(--font-ui);
     transition: all 0.15s;
-    margin-left: auto;
     white-space: nowrap;
   }
   .knowledge-toggle-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(129,140,248,0.1); }
@@ -2448,7 +2449,7 @@ function getDashboardHtml(projectDir) {
       <div class="section-title" style="margin-bottom:0;flex-shrink:0;">
         <div class="icon" style="background:var(--cyan-dim);color:var(--cyan);">L</div>
         Observations
-        <button class="obs-toggle-btn" id="obsArchiveToggle" title="Show archived observations">Archived</button>
+        <button class="obs-toggle-btn" id="obsArchiveToggle" title="Show archived observations">archived <span class="cat-count">0</span></button>
       </div>
       <div class="search-box">
         <input type="text" class="search-input" id="searchInput" placeholder="Search observations... (Enter to search)" autocomplete="off" spellcheck="false">
@@ -2507,7 +2508,7 @@ const API = '';
 let currentFilter = null;
 let currentSearch = '';
 let openDetailId = null;
-let showArchivedObs = false;
+let showArchivedObs = localStorage.getItem('cm-obs-archived') === '1';
 let currentSession = null;
 let lastObsCount = null;
 let currentTheme = localStorage.getItem('cm-theme') || 'dark';
@@ -3087,14 +3088,21 @@ async function refresh() {
       if (showArchivedObs) searchUrl += '&archived=1';
       fetches.push(fetchJson(searchUrl));
     } else {
-      let tlUrl = '/api/timeline?limit=50';
+      let tlUrl = '/api/timeline?limit=50&archived=1';
       if (currentFilter) tlUrl += '&type=' + currentFilter;
       if (currentSession) tlUrl += '&session=' + currentSession;
-      if (showArchivedObs) tlUrl += '&archived=1';
       fetches.push(fetchJson(tlUrl));
     }
 
-    const [stats, sessions, compression, topFiles, privacy, activity, dbHealth, budget, knowledgeStats, knowledge, eventStats, events, snapshots, contentSources, timeline] = await Promise.all(fetches);
+    const [stats, sessions, compression, topFiles, privacy, activity, dbHealth, budget, ks, knowledge, eventStats, events, snapshots, contentSources, timeline] = await Promise.all(fetches);
+    knowledgeStats = ks;
+    const obsArchivedCount = timeline.filter(t => t.archived === 1).length;
+    const obsBtnEl = document.getElementById('obsArchiveToggle');
+    if (obsBtnEl) {
+      const obsCounter = obsBtnEl.querySelector('.cat-count');
+      if (obsCounter) obsCounter.textContent = obsArchivedCount;
+      obsBtnEl.classList.toggle('active', showArchivedObs);
+    }
 
     // Stats cards
     document.getElementById('statObs').textContent = fmt(stats.observations);
@@ -3324,22 +3332,7 @@ async function refresh() {
 
     // --- Knowledge Base ---
     document.getElementById('knowledgeCount').textContent = knowledgeStats.total + ' entries' + (knowledgeStats.archived > 0 ? ' (' + knowledgeStats.archived + ' archived)' : '');
-    const kCatsEl = document.getElementById('knowledgeCategories');
-    const catColors = { pattern: 'cat-pattern', decision: 'cat-decision', error: 'cat-error', api: 'cat-api', component: 'cat-component' };
-    const archiveBtnHtml = '<button class="knowledge-toggle-btn" id="knowledgeArchiveToggle" title="Show archived entries">' +
-      (showArchivedKnowledge ? 'Active' : 'Archived') +
-      '</button>';
-    const catHtml = knowledgeStats.categories.map(c =>
-      '<button class="knowledge-category ' + (catColors[c.category] || '') + (currentKnowledgeCategory === c.category ? ' active' : '') + '" data-category="' + escHtml(c.category) + '">' +
-        c.category +
-        '<span class="cat-count">' + c.count + '</span>' +
-      '</button>'
-    );
-    // Place the Archived toggle immediately after the component category pill
-    const compIdx = knowledgeStats.categories.findIndex(c => c.category === 'component');
-    if (compIdx !== -1) { catHtml.splice(compIdx + 1, 0, archiveBtnHtml); }
-    else { catHtml.push(archiveBtnHtml); }
-    kCatsEl.innerHTML = catHtml.join('');
+    renderKnowledgeCategories();
 
     // Only update the knowledge list if no active search query
     if (!knowledgeSearchQuery) {
@@ -3458,7 +3451,8 @@ async function refresh() {
         : 'No observations' + (currentFilter ? ' of type "' + currentFilter + '"' : '');
       timelineEl.innerHTML = '<div class="empty-state"><p>' + msg + '</p></div>';
     } else {
-      timelineEl.innerHTML = timeline.map(obs => {
+      const timelineToRender = showArchivedObs ? timeline : timeline.filter(t => t.archived !== 1);
+      timelineEl.innerHTML = timelineToRender.map(obs => {
         let display = obs.summary || obs.content_preview || '(no content)';
         // Highlight search terms
         if (isSearching) {
@@ -3663,8 +3657,9 @@ const knowledgeSearchInput = document.getElementById('knowledgeSearchInput');
 const knowledgeSearchClear = document.getElementById('knowledgeSearchClear');
 let knowledgeSearchQuery = '';
 let knowledgeSearchTimer = null;
-let showArchivedKnowledge = false;
-let currentKnowledgeCategory = null;
+let showArchivedKnowledge = localStorage.getItem('cm-knowledge-archived') === '1';
+let currentKnowledgeCategory = localStorage.getItem('cm-knowledge-category') || null;
+let knowledgeStats = null;
 
 function renderKnowledgeList(items) {
   const catColors = { pattern: 'cat-pattern', decision: 'cat-decision', error: 'cat-error', api: 'cat-api', component: 'cat-component' };
@@ -3710,6 +3705,24 @@ async function loadKnowledgeList() {
   } catch {}
 }
 
+function renderKnowledgeCategories() {
+  const kCatsEl = document.getElementById('knowledgeCategories');
+  if (!kCatsEl) return;
+  const catColors = { pattern: 'cat-pattern', decision: 'cat-decision', error: 'cat-error', api: 'cat-api', component: 'cat-component' };
+  const archiveBtnHtml = '<button class="knowledge-toggle-btn' + (showArchivedKnowledge ? ' active' : '') + '" id="knowledgeArchiveToggle" title="Show archived entries">archived <span class="cat-count">' + knowledgeStats.archived + '</span></button>';
+  const catHtml = knowledgeStats.categories.map(c =>
+    '<button class="knowledge-category ' + (catColors[c.category] || '') + (currentKnowledgeCategory === c.category ? ' active' : '') + '" data-category="' + escHtml(c.category) + '">' +
+      c.category +
+      '<span class="cat-count">' + c.count + '</span>' +
+    '</button>'
+  );
+  // Place the Archived toggle immediately after the component category pill
+  const compIdx = knowledgeStats.categories.findIndex(c => c.category === 'component');
+  if (compIdx !== -1) { catHtml.splice(compIdx + 1, 0, archiveBtnHtml); }
+  else { catHtml.push(archiveBtnHtml); }
+  kCatsEl.innerHTML = catHtml.join('');
+}
+
 async function toggleKnowledgeArchive(btn) {
   const id = btn.dataset.id;
   const currentlyArchived = btn.dataset.archived === 'true';
@@ -3733,12 +3746,9 @@ async function toggleKnowledgeArchive(btn) {
 
 function toggleArchivedKnowledgeView() {
   showArchivedKnowledge = !showArchivedKnowledge;
-  const btn = document.getElementById('knowledgeArchiveToggle');
-  if (btn) {
-    btn.classList.toggle('active', showArchivedKnowledge);
-    btn.textContent = showArchivedKnowledge ? 'Active' : 'Archived';
-  }
+  localStorage.setItem('cm-knowledge-archived', showArchivedKnowledge ? '1' : '0');
   loadKnowledgeList();
+  renderKnowledgeCategories();
 }
 
 async function toggleObservationArchive(btn) {
@@ -3764,10 +3774,11 @@ async function toggleObservationArchive(btn) {
 
 function toggleArchivedObsView() {
   showArchivedObs = !showArchivedObs;
+  localStorage.setItem('cm-obs-archived', showArchivedObs ? '1' : '0');
   const btn = document.getElementById('obsArchiveToggle');
   if (btn) {
+    btn.textContent = 'archived';
     btn.classList.toggle('active', showArchivedObs);
-    btn.textContent = showArchivedObs ? 'Active' : 'Archived';
   }
   refresh();
 }
@@ -3778,6 +3789,7 @@ async function doKnowledgeSearch() {
   knowledgeSearchClear.style.display = q ? 'block' : 'none';
   // Text search clears category filter (mutually exclusive modes)
   currentKnowledgeCategory = null;
+  localStorage.removeItem('cm-knowledge-category');
   if (!q) {
     // Restore default knowledge list from last refresh
     const items = await fetchJson('/api/knowledge?limit=20');
@@ -3786,6 +3798,7 @@ async function doKnowledgeSearch() {
   }
   const results = await fetchJson('/api/knowledge/search?q=' + encodeURIComponent(q) + '&limit=50');
   renderKnowledgeList(results);
+  renderKnowledgeCategories();
 }
 
 knowledgeSearchInput.addEventListener('keydown', (e) => {
@@ -3827,11 +3840,13 @@ if (kCatsEl) {
       } else {
         currentKnowledgeCategory = category;
       }
+      localStorage.setItem('cm-knowledge-category', currentKnowledgeCategory || '');
       // Clear knowledge search when filtering by category
       knowledgeSearchQuery = '';
       knowledgeSearchInput.value = '';
       knowledgeSearchClear.style.display = 'none';
       loadKnowledgeList();
+      renderKnowledgeCategories();
       return;
     }
     const archiveBtn = e.target.closest('#knowledgeArchiveToggle');
@@ -5483,6 +5498,25 @@ function getTimelinePageHtml(projectDir) {
   .tl-summary { font-size: 12px; color: var(--text); line-height: 1.5; }
   .tl-meta { font-size: 10px; color: var(--text-muted); margin-top: 6px; display: flex; gap: 12px; flex-wrap: wrap; font-family: var(--font-mono); }
 
+  .tl-entry.archived { opacity: 0.5; filter: grayscale(0.6); border-color: var(--border-subtle); }
+
+  .tl-archive-btn {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text-dim);
+    cursor: pointer;
+    font-family: var(--font-ui);
+    transition: all 0.15s;
+    white-space: nowrap;
+    margin-left: auto;
+  }
+  .tl-archive-btn:hover { border-color: var(--red); color: var(--red); }
+  .tl-archive-btn.restore { border-color: var(--green); color: var(--green); }
+  .tl-archive-btn.restore:hover { border-color: var(--green); color: var(--green); }
+
   .tl-detail {
     display: none; margin-top: 10px; padding-top: 10px;
     border-top: 1px solid var(--border); font-size: 11px;
@@ -5598,6 +5632,7 @@ function getTimelinePageHtml(projectDir) {
   let activeProjectDb = localStorage.getItem('cm-active-project') || null;
   let openDetailId = null;
   const detailCache = {};
+  let showArchivedObs = localStorage.getItem('cm-timeline-archived') === '1';
 
   const BADGE_CLASSES = {
     code_change: 'code_change', error: 'error', decision: 'decision',
@@ -5642,14 +5677,17 @@ function getTimelinePageHtml(projectDir) {
     if (search) {
       url = '/api/search?q=' + encodeURIComponent(search) + '&limit=' + limit;
       if (currentType) url += '&type=' + encodeURIComponent(currentType);
+      if (showArchivedObs) url += '&archived=1';
     } else if (dateFrom || dateTo) {
       const from = dateFrom ? new Date(dateFrom).getTime() : 0;
       const to = dateTo ? new Date(dateTo + 'T23:59:59').getTime() : Date.now();
       url = '/api/timeline-range?from=' + from + '&to=' + to + '&limit=' + limit;
       if (currentType) url += '&type=' + encodeURIComponent(currentType);
+      if (showArchivedObs) url += '&archived=1';
     } else {
       url = '/api/timeline?limit=' + limit;
       if (currentType) url += '&type=' + encodeURIComponent(currentType);
+      if (showArchivedObs) url += '&archived=1';
     }
 
     if (activeProjectDb && activeProjectDb !== '__all__') url += '&db=' + encodeURIComponent(activeProjectDb);
@@ -5681,7 +5719,8 @@ function getTimelinePageHtml(projectDir) {
     // Group by day
     let html = '';
     let lastDay = '';
-    for (const entry of entries) {
+    const entriesToRender = showArchivedObs ? entries : entries.filter(e => e.archived !== 1);
+    for (const entry of entriesToRender) {
       const day = formatDayGroup(entry.indexed_at);
       if (day !== lastDay) {
         html += '<div class="tl-group-header">' + esc(day) + '</div>';
@@ -5692,7 +5731,8 @@ function getTimelinePageHtml(projectDir) {
       let meta = {};
       try { meta = typeof entry.metadata === 'string' ? JSON.parse(entry.metadata) : (entry.metadata || {}); } catch {}
 
-      html += '<div class="tl-entry" data-id="' + entry.id + '" data-ts="' + (entry.indexed_at || 0) + '">' +
+      const isArchived = !!(entry.archived);
+      html += '<div class="tl-entry' + (isArchived ? ' archived' : '') + '" data-id="' + entry.id + '" data-ts="' + (entry.indexed_at || 0) + '">' +
         '<div class="tl-header">' +
           '<span class="tl-badge ' + badgeClass(entry.type) + '">' + esc(entry.type) + '</span>' +
           (entry.privacy_level && entry.privacy_level !== 'public'
@@ -5701,9 +5741,10 @@ function getTimelinePageHtml(projectDir) {
         '</div>' +
         '<div class="tl-summary">' + esc(display) + '</div>' +
         '<div class="tl-meta">' +
-          '<span>id: ' + entry.id.slice(0, 12) + '...</span>' +
-          '<span>session: ' + (entry.session_id || '').slice(0, 10) + '...</span>' +
+          '<span>id: ' + esc(entry.id) + '</span>' +
+          '<span>session: ' + esc(entry.session_id || '-') + '</span>' +
           (meta.file_path ? '<span>file: ' + esc(meta.file_path) + '</span>' : '') +
+          '<button class="tl-archive-btn' + (isArchived ? ' restore' : '') + '" data-id="' + esc(entry.id) + '" data-archived="' + isArchived + '" onclick="toggleTimelineArchive(this)">' + (isArchived ? 'restore' : 'archive') + '</button>' +
         '</div>' +
         '<div class="tl-detail" id="detail-' + entry.id + '"></div>' +
       '</div>';
@@ -5714,7 +5755,10 @@ function getTimelinePageHtml(projectDir) {
 
     // Click handlers
     container.querySelectorAll('.tl-entry').forEach(el => {
-      el.addEventListener('click', function() { toggleDetail(this.dataset.id); });
+      el.addEventListener('click', function(e) {
+        if (e.target.closest('.tl-archive-btn')) return;
+        toggleDetail(this.dataset.id);
+      });
     });
 
     // Restore open detail panel after re-render (auto-refresh wipes the DOM)
@@ -5788,6 +5832,28 @@ function getTimelinePageHtml(projectDir) {
     }
   }
 
+  // --- Archive toggle ---
+  window.toggleTimelineArchive = async function(btn) {
+    const id = btn.dataset.id;
+    const currentlyArchived = btn.dataset.archived === 'true';
+    const newArchived = !currentlyArchived;
+    try {
+      const res = await fetch('/api/observation/archive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: id, archived: newArchived })
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        alert('Failed to ' + (newArchived ? 'archive' : 'unarchive') + ': ' + (data.error || 'unknown'));
+        return;
+      }
+      fetchTimeline();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  }
+
   // --- Type filter pills ---
   async function loadTypeFilters() {
     try {
@@ -5800,14 +5866,25 @@ function getTimelinePageHtml(projectDir) {
       for (const t of types) {
         html += '<div class="type-pill' + (currentType === t.type ? ' active' : '') + '" data-type="' + esc(t.type) + '">' + esc(t.type) + ' (' + t.count + ')</div>';
       }
+      const archivedCount = entries.filter(e => e.archived === 1).length;
+      html += '<div class="type-pill' + (showArchivedObs ? ' active' : '') + '" data-archived="1">archived <span class="cat-count">' + archivedCount + '</span></div>';
       container.innerHTML = html;
 
       container.querySelectorAll('.type-pill').forEach(pill => {
         pill.addEventListener('click', function() {
-          currentType = this.dataset.type;
-          container.querySelectorAll('.type-pill').forEach(p => p.classList.remove('active'));
-          this.classList.add('active');
-          fetchTimeline();
+          if (this.dataset.archived) {
+            // Toggle archived filter
+            showArchivedObs = !showArchivedObs;
+            localStorage.setItem('cm-timeline-archived', showArchivedObs ? '1' : '0');
+            container.querySelectorAll('.type-pill').forEach(p => p.classList.remove('active'));
+            this.classList.toggle('active', showArchivedObs);
+            fetchTimeline();
+          } else {
+            currentType = this.dataset.type;
+            container.querySelectorAll('.type-pill').forEach(p => p.classList.remove('active'));
+            this.classList.add('active');
+            fetchTimeline();
+          }
         });
       });
     } catch {}
@@ -5820,6 +5897,8 @@ function getTimelinePageHtml(projectDir) {
     document.getElementById('dateFrom').value = '';
     document.getElementById('dateTo').value = '';
     currentType = '';
+    showArchivedObs = false;
+    localStorage.removeItem('cm-timeline-archived');
     loadTypeFilters();
     fetchTimeline();
   };
