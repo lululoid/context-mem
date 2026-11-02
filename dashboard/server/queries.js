@@ -218,7 +218,7 @@ function searchObservations(state, query, limit = 20, type = null, includeArchiv
   try {
     // Try FTS5 search first (BM25 ranked)
     sql = `SELECT o.id, o.type, o.summary, substr(o.content, 1, 300) as content_preview,
-                  o.indexed_at, o.privacy_level, o.session_id, o.metadata,
+                  o.indexed_at, o.privacy_level, o.session_id, o.metadata, o.archived,
                   bm25(obs_fts) as rank
            FROM obs_fts f
            JOIN observations o ON o.rowid = f.rowid
@@ -237,7 +237,7 @@ function searchObservations(state, query, limit = 20, type = null, includeArchiv
   } catch {
     // Fallback to LIKE search
     sql = `SELECT id, type, summary, substr(content, 1, 300) as content_preview,
-                  indexed_at, privacy_level, session_id, metadata,
+                  indexed_at, privacy_level, session_id, metadata, archived,
                   0 as rank
            FROM observations
            WHERE (summary LIKE ? OR content LIKE ?)`;
