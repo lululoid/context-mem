@@ -927,6 +927,8 @@ function getDashboardHtml(projectDir) {
   }
   .knowledge-toggle-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(129,140,248,0.1); }
 
+  .knowledge-category.active { border-color: var(--accent); color: var(--accent); background: rgba(129,140,248,0.1); }
+
   .obs-item.archived { opacity: 0.5; filter: grayscale(0.6); border-color: var(--border-subtle); background: var(--bg); }
 
   .obs-archive-btn {
@@ -3328,10 +3330,10 @@ async function refresh() {
       (showArchivedKnowledge ? 'Active' : 'Archived') +
       '</button>';
     const catHtml = knowledgeStats.categories.map(c =>
-      '<div class="knowledge-category ' + (catColors[c.category] || '') + '">' +
+      '<button class="knowledge-category ' + (catColors[c.category] || '') + (currentKnowledgeCategory === c.category ? ' active' : '') + '" data-category="' + escHtml(c.category) + '">' +
         c.category +
         '<span class="cat-count">' + c.count + '</span>' +
-      '</div>'
+      '</button>'
     );
     // Place the Archived toggle immediately after the component category pill
     const compIdx = knowledgeStats.categories.findIndex(c => c.category === 'component');
@@ -3341,7 +3343,15 @@ async function refresh() {
 
     // Only update the knowledge list if no active search query
     if (!knowledgeSearchQuery) {
-      renderKnowledgeList(knowledge);
+      let items = knowledge;
+      if (currentKnowledgeCategory) {
+        items = items.filter(k => k.category === currentKnowledgeCategory);
+      }
+      if (showArchivedKnowledge) {
+        // Archived view is managed by loadKnowledgeList() via the toggle; skip here
+      } else {
+        renderKnowledgeList(items);
+      }
     }
 
     // --- Content Sources ---
@@ -3654,6 +3664,7 @@ const knowledgeSearchClear = document.getElementById('knowledgeSearchClear');
 let knowledgeSearchQuery = '';
 let knowledgeSearchTimer = null;
 let showArchivedKnowledge = false;
+let currentKnowledgeCategory = null;
 
 function renderKnowledgeList(items) {
   const catColors = { pattern: 'cat-pattern', decision: 'cat-decision', error: 'cat-error', api: 'cat-api', component: 'cat-component' };
@@ -3690,7 +3701,9 @@ function renderKnowledgeList(items) {
 }
 
 async function loadKnowledgeList() {
-  const url = showArchivedKnowledge ? '/api/knowledge?archived=1&limit=50' : '/api/knowledge?limit=20';
+  let url = '/api/knowledge?limit=20';
+  if (showArchivedKnowledge) url += '&archived=1';
+  if (currentKnowledgeCategory) url += '&category=' + encodeURIComponent(currentKnowledgeCategory);
   try {
     const items = await fetchJson(url);
     renderKnowledgeList(items);
@@ -3763,6 +3776,8 @@ async function doKnowledgeSearch() {
   const q = knowledgeSearchInput.value.trim();
   knowledgeSearchQuery = q;
   knowledgeSearchClear.style.display = q ? 'block' : 'none';
+  // Text search clears category filter (mutually exclusive modes)
+  currentKnowledgeCategory = null;
   if (!q) {
     // Restore default knowledge list from last refresh
     const items = await fetchJson('/api/knowledge?limit=20');
@@ -3804,8 +3819,23 @@ knowledgeSearchClear.addEventListener('click', () => {
 const kCatsEl = document.getElementById('knowledgeCategories');
 if (kCatsEl) {
   kCatsEl.addEventListener('click', function (e) {
-    const btn = e.target.closest('#knowledgeArchiveToggle');
-    if (btn) toggleArchivedKnowledgeView();
+    const catBtn = e.target.closest('button[data-category]');
+    if (catBtn) {
+      const category = catBtn.dataset.category;
+      if (currentKnowledgeCategory === category) {
+        currentKnowledgeCategory = null;
+      } else {
+        currentKnowledgeCategory = category;
+      }
+      // Clear knowledge search when filtering by category
+      knowledgeSearchQuery = '';
+      knowledgeSearchInput.value = '';
+      knowledgeSearchClear.style.display = 'none';
+      loadKnowledgeList();
+      return;
+    }
+    const archiveBtn = e.target.closest('#knowledgeArchiveToggle');
+    if (archiveBtn) toggleArchivedKnowledgeView();
   });
 }
 
