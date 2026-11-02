@@ -3082,6 +3082,7 @@ async function refresh() {
       let searchUrl = '/api/search?q=' + encodeURIComponent(currentSearch);
       if (currentFilter) searchUrl += '&type=' + currentFilter;
       if (currentSession) searchUrl += '&session=' + currentSession;
+      if (showArchivedObs) searchUrl += '&archived=1';
       fetches.push(fetchJson(searchUrl));
     } else {
       let tlUrl = '/api/timeline?limit=50';

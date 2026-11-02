@@ -19,7 +19,8 @@ function handleApi(req, res, state) {
           state,
           Math.min(parseInt(url.searchParams.get('limit') || '50', 10), 1000),
           url.searchParams.get('type') || null,
-          url.searchParams.get('session') || null
+          url.searchParams.get('session') || null,
+          url.searchParams.get('archived') === '1'
         );
         break;
       case '/api/observation':
@@ -56,7 +57,8 @@ function handleApi(req, res, state) {
           state,
           url.searchParams.get('q') || '',
           Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 1000),
-          url.searchParams.get('type') || null
+          url.searchParams.get('type') || null,
+          url.searchParams.get('archived') === '1'
         );
         break;
       case '/api/tokens':
@@ -414,7 +416,8 @@ function handleApi(req, res, state) {
           state,
           url.searchParams.get('q') || '',
           Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 100),
-          url.searchParams.get('type') || null
+          url.searchParams.get('type') || null,
+          url.searchParams.get('archived') === '1'
         );
         break;
       case '/api/contradictions':
