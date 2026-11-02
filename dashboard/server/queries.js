@@ -708,6 +708,26 @@ function getGraphData(state, entityFilter, depth) {
     seedSql += ' LIMIT 200';
     const seeds = db.prepare(seedSql).all(...seedParams);
 
+    // Pre-load label maps for observation/knowledge title resolution
+    const knowledgeLabels = {};
+    for (const k of db.prepare('SELECT id, title FROM knowledge').all()) {
+      knowledgeLabels[k.id] = k.title;
+    }
+    const observationLabels = {};
+    for (const o of db.prepare('SELECT id, COALESCE(summary, substr(content, 1, 200)) AS summary FROM observations').all()) {
+      observationLabels[o.id] = o.summary;
+    }
+
+    function resolveLabel(node) {
+      if (node.knowledge_id) {
+        const byId = knowledgeLabels[node.knowledge_id] || observationLabels[node.knowledge_id];
+        if (byId) return byId;
+      }
+      const byName = knowledgeLabels[node.name] || observationLabels[node.name];
+      if (byName) return byName;
+      return node.name;
+    }
+
     // BFS traversal up to depth
     let frontier = seeds.map(e => e.id);
     for (const e of seeds) {
@@ -715,7 +735,7 @@ function getGraphData(state, entityFilter, depth) {
         visited.add(e.id);
         let meta = {};
         try { meta = JSON.parse(e.metadata); } catch {}
-        nodes.push({ id: e.id, name: e.name, type: e.entity_type, metadata: meta, knowledge_id: e.knowledge_id, created_at: e.created_at });
+        nodes.push({ id: e.id, name: e.name, type: e.entity_type, metadata: meta, knowledge_id: e.knowledge_id, created_at: e.created_at, label: resolveLabel(e) });
       }
     }
 
@@ -739,7 +759,7 @@ function getGraphData(state, entityFilter, depth) {
             if (neighbor) {
               let nMeta = {};
               try { nMeta = JSON.parse(neighbor.metadata); } catch {}
-              nodes.push({ id: neighbor.id, name: neighbor.name, type: neighbor.entity_type, metadata: nMeta, knowledge_id: neighbor.knowledge_id, created_at: neighbor.created_at });
+              nodes.push({ id: neighbor.id, name: neighbor.name, type: neighbor.entity_type, metadata: nMeta, knowledge_id: neighbor.knowledge_id, created_at: neighbor.created_at, label: resolveLabel(neighbor) });
               nextFrontier.push(neighborId);
             }
           }

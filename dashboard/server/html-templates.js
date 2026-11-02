@@ -3997,13 +3997,13 @@ function renderGraph() {
     const label = document.createElementNS(ns, 'text');
     label.setAttribute('class', 'graph-node-label');
     label.setAttribute('dy', '22');
-    label.textContent = (n.name || '').slice(0, 20);
+    label.textContent = (n.label || n.name || '').slice(0, 20);
     g.appendChild(label);
 
     // Tooltip on hover
     g.addEventListener('mouseenter', function(ev) {
       tooltip.style.display = 'block';
-      document.getElementById('ttName').textContent = n.name;
+      document.getElementById('ttName').textContent = n.label || n.name;
       document.getElementById('ttType').textContent = n.type + (n.knowledge_id ? ' (linked to knowledge)' : '');
       const rect = canvas.getBoundingClientRect();
       tooltip.style.left = (ev.clientX - rect.left + 12) + 'px';
@@ -4998,7 +4998,7 @@ function getGraphPageHtml(projectDir) {
       ctx.font = '10px monospace';
       ctx.fillStyle = '#e2e2e8';
       ctx.textAlign = 'center';
-      const label = (n.name || '').length > 24 ? (n.name || '').slice(0, 22) + '..' : (n.name || '');
+      const label = ((n.label || n.name || '').length > 24 ? (n.label || n.name || '').slice(0, 22) + '..' : (n.label || n.name || ''));
       ctx.fillText(label, n.x, n.y + r + 14);
     }
 
