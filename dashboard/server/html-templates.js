@@ -5561,6 +5561,15 @@ function getTimelinePageHtml(projectDir) {
   .project-pill .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
   .project-pill.skeleton { opacity: 0.4; cursor: default; }
   .project-count { font-size: 11px; color: var(--text-muted); flex-shrink: 0; white-space: nowrap; font-family: var(--font-mono); }
+
+  .sticky-toolbar {
+    position: sticky;
+    top: 56px;
+    z-index: 50;
+    background: rgba(8,8,13,0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
 </style>
 </head>
 <body>
@@ -5581,35 +5590,37 @@ function getTimelinePageHtml(projectDir) {
   </div>
 </div>
 
-<div class="project-bar" id="projectBar">
-  <div class="project-bar-inner">
-    <div class="project-bar-label" id="projectLabel">Project</div>
-    <div class="project-pills" id="projectPills"></div>
+<div class="sticky-toolbar">
+  <div class="project-bar" id="projectBar">
+    <div class="project-bar-inner">
+      <div class="project-bar-label" id="projectLabel">Project</div>
+      <div class="project-pills" id="projectPills"></div>
+    </div>
   </div>
-</div>
 
-<div class="toolbar">
-  <input type="text" id="searchInput" placeholder="Search observations..." />
-  <input type="date" id="dateFrom" title="From date" />
-  <input type="date" id="dateTo" title="To date" />
-  <select id="limitSelect">
-    <option value="50">50 entries</option>
-    <option value="100" selected>100 entries</option>
-    <option value="250">250 entries</option>
-    <option value="500">500 entries</option>
-  </select>
-  <button onclick="applyFilters()">Apply</button>
-  <button class="secondary" onclick="clearFilters()">Clear</button>
-  <button id="replay-btn" title="Replay timeline chronologically">&#9654; Replay</button>
-  <div class="spacer"></div>
-  <div class="result-count" id="resultCount"></div>
-  <div class="auto-refresh-indicator">
-    <div class="status-dot" style="width:4px;height:4px;"></div>
-    <span id="refreshTimer">5s</span>
+  <div class="toolbar">
+    <input type="text" id="searchInput" placeholder="Search observations..." />
+    <input type="date" id="dateFrom" title="From date" />
+    <input type="date" id="dateTo" title="To date" />
+    <select id="limitSelect">
+      <option value="50">50 entries</option>
+      <option value="100" selected>100 entries</option>
+      <option value="250">250 entries</option>
+      <option value="500">500 entries</option>
+    </select>
+    <button onclick="applyFilters()">Apply</button>
+    <button class="secondary" onclick="clearFilters()">Clear</button>
+    <button id="replay-btn" title="Replay timeline chronologically">&#9654; Replay</button>
+    <div class="spacer"></div>
+    <div class="result-count" id="resultCount"></div>
+    <div class="auto-refresh-indicator">
+      <div class="status-dot" style="width:4px;height:4px;"></div>
+      <span id="refreshTimer">5s</span>
+    </div>
   </div>
-</div>
 
-<div class="type-filter-row" id="typeFilters"></div>
+  <div class="type-filter-row" id="typeFilters"></div>
+</div>
 
 <div class="main">
   <div class="timeline-line" id="timeline">
