@@ -5565,6 +5565,8 @@ function getTimelinePageHtml(projectDir) {
   let lastRefresh = 0;
   let refreshInterval = null;
   let activeProjectDb = localStorage.getItem('cm-active-project') || null;
+  let openDetailId = null;
+  const detailCache = {};
 
   const BADGE_CLASSES = {
     code_change: 'code_change', error: 'error', decision: 'decision',
@@ -5683,6 +5685,17 @@ function getTimelinePageHtml(projectDir) {
     container.querySelectorAll('.tl-entry').forEach(el => {
       el.addEventListener('click', function() { toggleDetail(this.dataset.id); });
     });
+
+    // Restore open detail panel after re-render (auto-refresh wipes the DOM)
+    if (openDetailId) {
+      const detailEl = document.getElementById('detail-' + openDetailId);
+      if (detailEl) {
+        detailEl.classList.add('open');
+        if (detailCache[openDetailId]) {
+          detailEl.innerHTML = detailCache[openDetailId];
+        }
+      }
+    }
   }
 
   // --- Detail toggle ---
@@ -5692,6 +5705,7 @@ function getTimelinePageHtml(projectDir) {
 
     if (detailEl.classList.contains('open')) {
       detailEl.classList.remove('open');
+      openDetailId = null;
       return;
     }
 
@@ -5700,11 +5714,13 @@ function getTimelinePageHtml(projectDir) {
 
     if (detailEl.dataset.loaded) {
       detailEl.classList.add('open');
+      openDetailId = id;
       return;
     }
 
     detailEl.innerHTML = '<div style="color:var(--text-muted);padding:4px;">Loading...</div>';
     detailEl.classList.add('open');
+    openDetailId = id;
 
     try {
       const res = await fetch('/api/observation?id=' + encodeURIComponent(id));
@@ -5735,6 +5751,7 @@ function getTimelinePageHtml(projectDir) {
 
       detailEl.innerHTML = html;
       detailEl.dataset.loaded = '1';
+      detailCache[id] = html;
     } catch (err) {
       detailEl.innerHTML = '<div style="color:var(--red);">Failed: ' + esc(err.message) + '</div>';
     }
