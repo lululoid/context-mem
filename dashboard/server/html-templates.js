@@ -5686,19 +5686,16 @@ function getTimelinePageHtml(projectDir) {
 
     let url;
     if (search) {
-      url = '/api/search?q=' + encodeURIComponent(search) + '&limit=' + limit;
+      url = '/api/search?q=' + encodeURIComponent(search) + '&limit=' + limit + '&archived=1';
       if (currentType) url += '&type=' + encodeURIComponent(currentType);
-      if (showArchivedObs) url += '&archived=1';
     } else if (dateFrom || dateTo) {
       const from = dateFrom ? new Date(dateFrom).getTime() : 0;
       const to = dateTo ? new Date(dateTo + 'T23:59:59').getTime() : Date.now();
-      url = '/api/timeline-range?from=' + from + '&to=' + to + '&limit=' + limit;
+      url = '/api/timeline-range?from=' + from + '&to=' + to + '&limit=' + limit + '&archived=1';
       if (currentType) url += '&type=' + encodeURIComponent(currentType);
-      if (showArchivedObs) url += '&archived=1';
     } else {
-      url = '/api/timeline?limit=' + limit;
+      url = '/api/timeline?limit=' + limit + '&archived=1';
       if (currentType) url += '&type=' + encodeURIComponent(currentType);
-      if (showArchivedObs) url += '&archived=1';
     }
 
     if (activeProjectDb && activeProjectDb !== '__all__') url += '&db=' + encodeURIComponent(activeProjectDb);
@@ -5707,6 +5704,7 @@ function getTimelinePageHtml(projectDir) {
       const res = await fetch(url);
       entries = await res.json();
       renderTimeline();
+      loadTypeFilters();
       lastRefresh = Date.now();
       document.getElementById('statusText').textContent = 'updated ' + new Date().toLocaleTimeString();
     } catch (err) {
@@ -5887,7 +5885,6 @@ function getTimelinePageHtml(projectDir) {
             // Toggle archived filter
             showArchivedObs = !showArchivedObs;
             localStorage.setItem('cm-timeline-archived', showArchivedObs ? '1' : '0');
-            container.querySelectorAll('.type-pill').forEach(p => p.classList.remove('active'));
             this.classList.toggle('active', showArchivedObs);
             fetchTimeline();
           } else {
